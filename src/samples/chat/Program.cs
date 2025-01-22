@@ -35,6 +35,11 @@ IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
 
 CancellationTokenSource ts = new();
 
+
+var f = new Foo();
+var result = await f.DialAsync(ChatProtocol.Ref);
+
+
 if (args.Length > 0 && args[0] == "-d")
 {
     Multiaddress remoteAddr = args[1];
@@ -44,7 +49,8 @@ if (args.Length > 0 && args[0] == "-d")
     logger.LogInformation("Dialing {remote}", remoteAddr);
     IRemotePeerConnection remotePeer = await peerFactory.DialAsync(remoteAddr, ts.Token);
 
-    await remotePeer.DialAsync<ChatProtocol>(ts.Token);
+    var chat = ChatProtocol.Assert(await remotePeer.DialAsync<ChatProtocol>(ts.Token));
+    await chat.Exit;
     await remotePeer.DisconnectAsync();
 }
 else

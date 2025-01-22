@@ -1,20 +1,27 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using MorseCode.ITask;
+
 namespace Nethermind.Libp2p.Core;
 
-public abstract class SymmetricProtocol
+public abstract class SymmetricProtocol<Out> : IProtocol<Out>
 {
-    public Task DialAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    public abstract string Id { get; }
+
+    public async ITask<IManagedProtocolComm<Out>> DialAsync(IManagedRemoteComm comm)
+
     {
-        return ConnectAsync(channel, channelFactory, context, false);
+        await NegotiateAsync(comm);
+        return await ConnectAsync(comm, false);
     }
 
-    public Task ListenAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    public async Task ListenAsync(IManagedRemoteComm channel)
     {
-        return ConnectAsync(channel, channelFactory, context, true);
+        await ConnectAsync(channel, true);
     }
 
-    protected abstract Task ConnectAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context, bool isListener);
+
+    protected abstract Task NegotiateAsync(IManagedRemoteComm comm);
+    protected abstract Task<IManagedProtocolComm<Out>> ConnectAsync(IManagedRemoteComm comm, bool isListener);
 }

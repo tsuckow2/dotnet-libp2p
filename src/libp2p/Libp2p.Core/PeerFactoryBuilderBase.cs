@@ -27,84 +27,84 @@ public static class PeerFactoryBuilderBase
 }
 
 internal class ProtocolRegistry
-    {
-        private readonly IPeerFactoryBuilder builder;
-        private readonly IServiceProvider serviceProvider;
+{
+    private readonly IPeerFactoryBuilder builder;
+    private readonly IServiceProvider serviceProvider;
 
-        public IEnumerable<ITransport> Transports { get; }
+    public IEnumerable<ITransport> Transports { get; }
 
-        public IEnumerable<IMuxerProtocol> MuxerProtocols { get; }
+    public IEnumerable<IMuxerProtocol<IChannelMultiplexer>> MuxerProtocols { get; }
 
-        public IEnumerable<ISecurityProtocol> SecurityProtocols { get; }
+    public IEnumerable<ISecurityProtocol<IRemoteComm>> SecurityProtocols { get; }
 
-        public IEnumerable<IIdentityProtocol> IdentityProtocols { get; }
+    public IEnumerable<IIdentityProtocol> IdentityProtocols { get; }
 
 
-        public IEnumerable<IProtocol> OtherProtocols { get; }
+    public IEnumerable<IProtocol<object>> OtherProtocols { get; }
 
-        
-        // public ProtocolStack(IPeerFactoryBuilder builder, IServiceProvider serviceProvider, IProtocol protocol)
-        // {
-        //     this.builder = builder;
-        //     this.serviceProvider = serviceProvider;
-        //     Protocol = protocol;
-        //     UpChannelsFactory = ActivatorUtilities.GetServiceOrCreateInstance<ChannelFactory>(serviceProvider);
-        // }
 
-        // public ProtocolStack AddAppLayerProtocol<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
-        // {
-        //     builder.AddAppLayerProtocol(instance);
-        //     return this;
-        // }
+    // public ProtocolStack(IPeerFactoryBuilder builder, IServiceProvider serviceProvider, IProtocol protocol)
+    // {
+    //     this.builder = builder;
+    //     this.serviceProvider = serviceProvider;
+    //     Protocol = protocol;
+    //     UpChannelsFactory = ActivatorUtilities.GetServiceOrCreateInstance<ChannelFactory>(serviceProvider);
+    // }
 
-        // public ProtocolStack Over<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
-        // {
-        //     ProtocolStack nextNode = new(builder, serviceProvider, PeerFactoryBuilderBase.CreateProtocolInstance(serviceProvider!, instance));
-        //     return Over(nextNode);
-        // }
+    // public ProtocolStack AddAppLayerProtocol<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
+    // {
+    //     builder.AddAppLayerProtocol(instance);
+    //     return this;
+    // }
 
-        // public ProtocolStack Or<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
-        // {
-        //     if (Parent is null)
-        //     {
-        //         throw new NotImplementedException();
-        //     }
-        //     IProtocol protocol = PeerFactoryBuilderBase.CreateProtocolInstance(serviceProvider!, instance);
-        //     ProtocolStack stack = new(builder, serviceProvider, protocol);
-        //     return Or(stack);
-        // }
+    // public ProtocolStack Over<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
+    // {
+    //     ProtocolStack nextNode = new(builder, serviceProvider, PeerFactoryBuilderBase.CreateProtocolInstance(serviceProvider!, instance));
+    //     return Over(nextNode);
+    // }
 
-        // public ProtocolStack Over(ProtocolStack stack)
-        // {
-        //     PeerFactoryBuilderBase<TBuilder, TPeerFactory>.ProtocolStack rootProto = stack.Root ?? stack;
-        //     TopProtocols.Add(rootProto);
+    // public ProtocolStack Or<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
+    // {
+    //     if (Parent is null)
+    //     {
+    //         throw new NotImplementedException();
+    //     }
+    //     IProtocol protocol = PeerFactoryBuilderBase.CreateProtocolInstance(serviceProvider!, instance);
+    //     ProtocolStack stack = new(builder, serviceProvider, protocol);
+    //     return Or(stack);
+    // }
 
-        //     if (PrevSwitch != null)
-        //     {
-        //         PrevSwitch.Over(stack);
-        //     }
+    // public ProtocolStack Over(ProtocolStack stack)
+    // {
+    //     PeerFactoryBuilderBase<TBuilder, TPeerFactory>.ProtocolStack rootProto = stack.Root ?? stack;
+    //     TopProtocols.Add(rootProto);
 
-        //     rootProto.Root = stack.Root = Root ?? this;
-        //     rootProto.Parent = this;
+    //     if (PrevSwitch != null)
+    //     {
+    //         PrevSwitch.Over(stack);
+    //     }
 
-        //     return stack;
-        // }
+    //     rootProto.Root = stack.Root = Root ?? this;
+    //     rootProto.Parent = this;
 
-        // public ProtocolStack Or(ProtocolStack stack)
-        // {
-        //     if (Parent is null)
-        //     {
-        //         throw new NotImplementedException();
-        //     }
-        //     stack.PrevSwitch = this;
-        //     return Parent.Over(stack);
-        // }
+    //     return stack;
+    // }
 
-        // public override string ToString()
-        // {
-        //     return $"{Protocol.Id}({TopProtocols.Count}): {string.Join(" or ", TopProtocols.Select(p => p.Protocol.Id))}";
-        // }
-    }
+    // public ProtocolStack Or(ProtocolStack stack)
+    // {
+    //     if (Parent is null)
+    //     {
+    //         throw new NotImplementedException();
+    //     }
+    //     stack.PrevSwitch = this;
+    //     return Parent.Over(stack);
+    // }
+
+    // public override string ToString()
+    // {
+    //     return $"{Protocol.Id}({TopProtocols.Count}): {string.Join(" or ", TopProtocols.Select(p => p.Protocol.Id))}";
+    // }
+}
 
 public abstract class PeerFactoryBuilderBase<TBuilder, TPeerFactory> : IPeerFactoryBuilder
     where TBuilder : PeerFactoryBuilderBase<TBuilder, TPeerFactory>, IPeerFactoryBuilder

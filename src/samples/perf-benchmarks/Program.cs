@@ -7,18 +7,28 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Core;
 using Multiformats.Address;
+using System.Net.Quic;
+using Microsoft.Extensions.Logging;
 
 await Task.Delay(1000);
 {
+    var localIdentity = new Identity(Enumerable.Repeat((byte)42, 32).ToArray());
+    var localPeer = new Nethermind.Libp2p.Core.PeerFactory.LocalPeer(localIdentity);
+    if (QuicListener.IsSupported)
+    {
+        localPeer.GetOrAddAddress("/ip4/0.0.0.0/udp/0/quic-v1");
+    }
+    localPeer.GetOrAddAddress("/ip4/0.0.0.0/tcp/0");
+
+
     ServiceProvider serviceProvider = new ServiceCollection()
+.AddLibp2pLocalPeer(localPeer)
         .AddLibp2p(builder => builder.AddAppLayerProtocol<PerfProtocol>())
-        //.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Information).AddSimpleConsole(l=>l.SingleLine = true))
+        .AddLogging(builder => builder.SetMinimumLevel(LogLevel.Information).AddSimpleConsole(l => l.SingleLine = true))
         .BuildServiceProvider();
 
     IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
 
-    Identity optionalFixedIdentity = new(Enumerable.Repeat((byte)42, 32).ToArray());
-    ILocalPeer peer = peerFactory.Create(optionalFixedIdentity);
 
     IListener listener = await peer.ListenAsync($"/ip4/0.0.0.0/tcp/0/p2p/{peer.Identity.PeerId}");
 

@@ -5,14 +5,32 @@ using System.Buffers;
 using System.Text;
 using Nethermind.Libp2p.Core;
 
-internal class ChatProtocol : SymmetricProtocol, IProtocol
+class ChatProtocolResult
 {
-    private static readonly ConsoleReader Reader = new();
-    public string Id => "/chat/1.0.0";
+    public Task Exit { get; }
 
-    protected override async Task ConnectAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context, bool isListener)
+    public ChatProtocolResult(Task exit)
     {
+        Exit = exit;
+    }
+
+}
+
+internal class ChatProtocol : SymmetricProtocol<ChatProtocolResult>
+{
+    public static ProtocolRef<ChatProtocol, ChatProtocolResult> Ref { get => new(); }
+
+    private static readonly ConsoleReader Reader = new();
+    public override string Id => "/chat/1.0.0";
+
+    protected override async Task NegotiateAsync(IManagedRemoteComm comm)
+    {
+        await NegotiationUtils.NegotiateProtocolAsync(comm, Id);
+    }
+
+    protected override async Task<IManagedProtocolComm<ChatProtocolResult>> ConnectAsync(IManagedRemoteComm comm, bool isListener)
+    {
+        var channel = comm.Channel;
         Console.Write("> ");
         _ = Task.Run(async () =>
         {
@@ -22,16 +40,21 @@ internal class ChatProtocol : SymmetricProtocol, IProtocol
                 Console.Write(Encoding.UTF8.GetString(read).Replace("\n\n", "\n> "));
             }
         });
-        for (; ; )
+        var exit = Task.Run(async () =>
         {
-            string line = await Reader.ReadLineAsync();
-            if (line == "exit")
+            for (; ; )
             {
-                return;
+                string line = await Reader.ReadLineAsync();
+                if (line == "exit")
+                {
+                    return;
+                }
+                Console.Write("> ");
+                byte[] buf = Encoding.UTF8.GetBytes(line + "\n\n");
+                await channel.WriteAsync(new ReadOnlySequence<byte>(buf));
             }
-            Console.Write("> ");
-            byte[] buf = Encoding.UTF8.GetBytes(line + "\n\n");
-            await channel.WriteAsync(new ReadOnlySequence<byte>(buf));
-        }
+        });
+
+        return new ManagedProtocolComm<ChatProtocolResult>(new(exit), comm);
     }
 }

@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Libp2p.Core;
 
-public class PeerFactory : IPeerFactory
+public class ManagedPeerSwitch : IManagedPeerSwitch
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILocalPeer _localPeer;
@@ -17,14 +17,17 @@ public class PeerFactory : IPeerFactory
 
     private ConcurrentDictionary<Identity, IRemotePeer> RemotePeers = new();
 
-    internal PeerFactory(ILocalPeer localPeer, ProtocolRegistry protocolRegistry, IServiceProvider serviceProvider)
+    internal ManagedPeerSwitch(ILocalPeer localPeer, ProtocolRegistry protocolRegistry, IServiceProvider serviceProvider)
     {
         _localPeer = localPeer;
         _protocolRegistry = protocolRegistry;
         _serviceProvider = serviceProvider;
+
+
     }
 
-    private IRemotePeer GetRemotePeer(Identity identity) {
+    private IRemotePeer GetRemotePeer(Identity identity)
+    {
         return RemotePeers.GetOrAdd(identity, (identity) => new RemotePeer(this, identity));
     }
     // private async Task<IListener> ListenAsync(LocalPeer peer, Multiaddress addr, CancellationToken token)
@@ -130,7 +133,7 @@ public class PeerFactory : IPeerFactory
 
     public Task<IRemotePeerConnection> DialAsync(Multiaddress addr, CancellationToken token)
     {
-        
+        // _protocolRegistry.Transports.
         throw new NotImplementedException();
     }
 
@@ -148,9 +151,9 @@ public class PeerFactory : IPeerFactory
         public event OnConnection? OnConnection;
         public Multiaddress Address => _localPeer.Address;
 
-        public Task DisconnectAsync()
+        public async Task DisconnectAsync()
         {
-            return _chan.CloseAsync();
+            await _chan.CloseAsync();
         }
 
         public TaskAwaiter GetAwaiter()
@@ -181,9 +184,10 @@ public class PeerFactory : IPeerFactory
         }
     }
 
-    
 
-    internal class RemotePeerConnection : IRemotePeerConnection {
+
+    internal class RemotePeerConnection : IRemotePeerConnection
+    {
         public IRemotePeer RemotePeer { get; }
         private readonly IPeerContext peerContext;
         public Channel Channel { get; } = new();

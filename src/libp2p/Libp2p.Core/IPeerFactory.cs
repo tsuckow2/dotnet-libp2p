@@ -7,8 +7,6 @@ namespace Nethermind.Libp2p.Core;
 
 public interface IPeerFactory
 {
-    ILocalPeer Create(Identity? identity = default, Multiaddress? localAddr = default);
-
     /// <summary>
     /// Connect to a peer using a specific multiaddr and enforce the identity to match the provided remote peer
     /// </summary>

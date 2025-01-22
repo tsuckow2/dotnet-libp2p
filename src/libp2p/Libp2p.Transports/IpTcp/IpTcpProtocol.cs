@@ -214,7 +214,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport
         _ = upChannel.CloseAsync();
     }
 
-    public async Task<IRemotePeerConnection> DialAsync(Multiaddress address)
+    public async Task<IRemotePeerChannel> DialAsync(Multiaddress address)
     {
         Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         var isIP4 = address.Has<IP4>();
@@ -253,8 +253,18 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport
 
         var stream = new NetworkStream(client, true /* Closing Stream, closes socket */);
 
-        new RemotePeerConnection();
+        var c = new GenericRemoteChannel(false, new StreamChannel(stream));
+        var connection = new GenericRemoteConnection(address, () => { stream.Close(); return Task.CompletedTask; });
+        return new GenericRemotePeerChannel(false, connection, new StreamChannel(stream));
+    }
+}
 
-        return new StreamChannel(stream);
+class IpTcpRemoteConnection(Multiaddress Address, NetworkStream stream)
+{
+    public Multiaddress Address { get; }
+    public IChannelMultiplexer? Mux { get; }
+    public Task DisconnectAsync()
+    {
+        return Task.CompletedTask
     }
 }
