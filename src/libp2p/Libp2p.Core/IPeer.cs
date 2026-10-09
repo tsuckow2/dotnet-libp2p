@@ -7,21 +7,15 @@ using System.Collections.Concurrent;
 namespace Nethermind.Libp2p.Core;
 
 /// <summary>
-///  Extra information about an address for a peer
+///     A peer as information: an identity and the addresses it is known at,
+///     each with its own accounting. A peer is not a connection — connections
+///     to a peer are separate, disposable objects
+///     (<see cref="IRemotePeerConnection"/>).
 /// </summary>
-public class PeerAddressAccounting
-{
-    int failedDials;
-    int FailedDials { get => failedDials; }
-    internal void RecordFailedDial() {
-        Interlocked.Add(ref failedDials, 1);
-    }
-}
-
 public interface IPeer
 {
     Identity Identity { get; }
 
-    public ConcurrentDictionary<Multiaddress, PeerAddressAccounting> Addresses { get; }
-    public PeerAddressAccounting GetOrAddAddress(Multiaddress address);
+    ConcurrentDictionary<Multiaddress, PeerAddressAccounting> Addresses { get; }
+    PeerAddressAccounting GetOrAddAddress(Multiaddress address);
 }

@@ -49,7 +49,7 @@ public class ProtocolRef<TProtocol, TOut> : IProtocolRef<TProtocol, TOut> where 
 ///     their <typeparamref name="TOut"/> is what a successful negotiation
 ///     produces (a multiplexer, a secured comm, ...).
 /// </summary>
-public interface IAnonymousProtocol<out TOut>
+public interface IAnonymousProtocol<TOut>
 {
     /// <summary>
     ///     Id used during connection establishment to negotiate the protocol.
@@ -72,7 +72,7 @@ public interface IAnonymousProtocol<out TOut>
 ///     but the comm is managed by the switch, and dialing returns the typed
 ///     comm so the caller gets the protocol's own surface.
 /// </summary>
-public interface IProtocol<out TOut>
+public interface IProtocol<TOut>
 {
     /// <summary>
     ///     Id used during connection establishment to negotiate the protocol.
@@ -93,13 +93,13 @@ public interface IProtocol<out TOut>
 /// <summary>
 ///     Managed-tier role: a muxer protocol produces a channel multiplexer.
 /// </summary>
-public interface IMuxerProtocol<out TOut> : IAnonymousProtocol<TOut> where TOut : IChannelMultiplexer
+public interface IMuxerProtocol<TOut> : IAnonymousProtocol<TOut> where TOut : IChannelMultiplexer
 {
 }
 
 /// <summary>
 ///     Managed-tier role: a security protocol produces a secured comm.
 /// </summary>
-public interface ISecurityProtocol<out TOut> : IAnonymousProtocol<TOut> where TOut : IRemoteComm
+public interface ISecurityProtocol<TOut> : IAnonymousProtocol<TOut> where TOut : IRemoteComm
 {
 }

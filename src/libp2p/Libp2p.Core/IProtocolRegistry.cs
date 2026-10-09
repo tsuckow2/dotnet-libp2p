@@ -1,14 +1,22 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: MIT
+
 namespace Nethermind.Libp2p.Core;
 
-interface IProtocolRegistry {
-    public IEnumerable<ITransport> Transports { get; }
+/// <summary>
+///     Every protocol available to the switch, categorized by role. This is
+///     the single registry (D2): the builder registers into it, the switch
+///     reads from it, and nothing assembles a protocol stack anywhere else.
+/// </summary>
+public interface IProtocolRegistry
+{
+    IEnumerable<ITransport> Transports { get; }
 
-    public IEnumerable<IMuxerProtocol> MuxerProtocols { get; }
+    IEnumerable<IMuxerProtocol> MuxerProtocols { get; }
 
-    public IEnumerable<ISecurityProtocol> SecurityProtocols { get; }
+    IEnumerable<ISecurityProtocol> SecurityProtocols { get; }
 
-    public IEnumerable<IIdentityProtocol> IdentityProtocols { get; }
+    IEnumerable<IIdentityProtocol> IdentityProtocols { get; }
 
-    public IEnumerable<IProtocol> OtherProtocols { get; }
- 
+    IEnumerable<IProtocol> OtherProtocols { get; }
 }

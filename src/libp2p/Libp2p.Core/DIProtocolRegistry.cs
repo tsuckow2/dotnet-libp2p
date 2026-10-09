@@ -1,14 +1,19 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: MIT
 
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.Libp2p.Core;
 
-public class DIProtocolRegistry(IServiceProvider _serviceProvider) : IProtocolRegistry
+/// <summary>
+///     The registry backed by DI: a role collection is simply every service
+///     registered under that role's interface.
+/// </summary>
+public class DIProtocolRegistry(IServiceProvider serviceProvider) : IProtocolRegistry
 {
-    public IEnumerable<ITransport> Transports { get => _serviceProvider.GetRequiredService<IEnumerable<ITransport>>(); }
-    public IEnumerable<IMuxerProtocol> MuxerProtocols { get=> _serviceProvider.GetRequiredService<IEnumerable<IMuxerProtocol>>(); }
-    public IEnumerable<ISecurityProtocol> SecurityProtocols { get=> _serviceProvider.GetRequiredService<IEnumerable<ISecurityProtocol>>(); }
-    public IEnumerable<IIdentityProtocol> IdentityProtocols { get=> _serviceProvider.GetRequiredService<IEnumerable<IIdentityProtocol>>(); }
-    public IEnumerable<IProtocol> OtherProtocols { get=> _serviceProvider.GetRequiredService<IEnumerable<IProtocol>>(); }
+    public IEnumerable<ITransport> Transports => serviceProvider.GetService<IEnumerable<ITransport>>() ?? [];
+    public IEnumerable<IMuxerProtocol> MuxerProtocols => serviceProvider.GetService<IEnumerable<IMuxerProtocol>>() ?? [];
+    public IEnumerable<ISecurityProtocol> SecurityProtocols => serviceProvider.GetService<IEnumerable<ISecurityProtocol>>() ?? [];
+    public IEnumerable<IIdentityProtocol> IdentityProtocols => serviceProvider.GetService<IEnumerable<IIdentityProtocol>>() ?? [];
+    public IEnumerable<IProtocol> OtherProtocols => serviceProvider.GetService<IEnumerable<IProtocol>>() ?? [];
 }
