@@ -172,11 +172,6 @@
           "System.Runtime": "4.3.0"
         }
       },
-      "MorseCode.ITask": {
-        "type": "Transitive",
-        "resolved": "2.0.3",
-        "contentHash": "4Mw9LlnBL3q0BTf7Cyzt7JJLkTxzAu7USoDP/z3+BlbBmTAa+EoNFgmmdeIqBi8Hb9Xsi0n/zY9m0jdkLNwcbA=="
-      },
       "Multiformats.Base": {
         "type": "Transitive",
         "resolved": "2.0.1",
@@ -1208,7 +1203,6 @@
           "Microsoft.Extensions.DependencyInjection": "[8.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[8.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.0, )",
-          "MorseCode.ITask": "[2.0.3, )",
           "Multiformats.Address": "[1.1.1, )",
           "Multiformats.Hash": "[1.5.0, )",
           "SimpleBase": "[4.0.0, )"
