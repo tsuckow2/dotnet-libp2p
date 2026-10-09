@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Libp2p.Protocols;
 
-public class YamuxProtocol : SymmetricProtocol, IProtocol
+public class YamuxProtocol : SymmetricProtocol, IMuxerProtocol
 {
     private const int HeaderLength = 12;
     private const int PingDelay = 30_000;

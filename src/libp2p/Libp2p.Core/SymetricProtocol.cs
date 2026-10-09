@@ -1,27 +1,48 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using MorseCode.ITask;
-
 namespace Nethermind.Libp2p.Core;
 
-public abstract class SymmetricProtocol<Out> : IProtocol<Out>
+/// <summary>
+///     Base for channel-tier protocols whose dial and listen paths are the
+///     same negotiation (e.g. Plaintext, Yamux, selector protocols).
+/// </summary>
+public abstract class SymmetricProtocol
+{
+    public Task DialAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    {
+        return ConnectAsync(channel, channelFactory, context, false);
+    }
+
+    public Task ListenAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    {
+        return ConnectAsync(channel, channelFactory, context, true);
+    }
+
+    protected abstract Task ConnectAsync(IChannel channel, IChannelFactory? channelFactory,
+        IPeerContext context, bool isListener);
+}
+
+/// <summary>
+///     Base for managed-tier protocols whose dial and listen paths share a
+///     negotiation step. <typeparamref name="TOut"/> is the typed comm the
+///     protocol hands back to its dialer.
+/// </summary>
+public abstract class SymmetricProtocol<TOut> : IProtocol<TOut>
 {
     public abstract string Id { get; }
 
-    public async ITask<IManagedProtocolComm<Out>> DialAsync(IManagedRemoteComm comm)
-
+    public async Task<IManagedProtocolComm<TOut>> DialAsync(IManagedRemoteComm comm)
     {
         await NegotiateAsync(comm);
         return await ConnectAsync(comm, false);
     }
 
-    public async Task ListenAsync(IManagedRemoteComm channel)
+    public async Task ListenAsync(IManagedRemoteComm comm)
     {
-        await ConnectAsync(channel, true);
+        await ConnectAsync(comm, true);
     }
 
-
     protected abstract Task NegotiateAsync(IManagedRemoteComm comm);
-    protected abstract Task<IManagedProtocolComm<Out>> ConnectAsync(IManagedRemoteComm comm, bool isListener);
+    protected abstract Task<IManagedProtocolComm<TOut>> ConnectAsync(IManagedRemoteComm comm, bool isListener);
 }

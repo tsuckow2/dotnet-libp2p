@@ -11,7 +11,7 @@ namespace Nethermind.Libp2p.Protocols;
 /// <summary>
 ///     https://github.com/libp2p/specs/tree/master/identify
 /// </summary>
-public class IdentifyProtocol : IProtocol
+public class IdentifyProtocol : IIdentityProtocol
 {
     private readonly string _agentVersion;
     private readonly string _protocolVersion;
