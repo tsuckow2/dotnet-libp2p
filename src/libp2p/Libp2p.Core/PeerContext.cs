@@ -19,7 +19,7 @@ public class PeerContext : IPeerContext
     public IPeerContext Fork()
     {
         PeerContext result = (PeerContext)MemberwiseClone();
-        result.RemotePeer = ((PeerFactory.RemotePeer)RemotePeer).Fork();
+        result.RemotePeer = ((RemotePeer)RemotePeer).Fork();
         return result;
     }
 

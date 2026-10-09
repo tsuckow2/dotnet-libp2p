@@ -7,180 +7,91 @@ namespace Nethermind.Libp2p.Core;
 
 public static class PeerFactoryBuilderBase
 {
-    private static HashSet<IProtocol> protocols = new();
-
-    internal static IProtocol CreateProtocolInstance<TProtocol>(IServiceProvider serviceProvider, TProtocol? instance = default) where TProtocol : IProtocol
+    internal static TProtocol CreateProtocolInstance<TProtocol>(IServiceProvider serviceProvider, TProtocol? instance = default)
     {
-        if (instance is not null)
-        {
-            protocols.Add(instance);
-        }
-
-        IProtocol? existing = instance ?? protocols.OfType<TProtocol>().FirstOrDefault();
-        if (existing is null)
-        {
-            existing = ActivatorUtilities.GetServiceOrCreateInstance<TProtocol>(serviceProvider);
-            protocols.Add(existing);
-        }
-        return existing;
+        return instance ?? ActivatorUtilities.GetServiceOrCreateInstance<TProtocol>(serviceProvider);
     }
 }
 
-internal class ProtocolRegistry
+/// <summary>
+///     Base for peer factory builders. A builder is just a set of protocol
+///     registrations by role plus the service provider to create them from;
+///     <see cref="Build"/> merges those registrations with whatever DI
+///     already provides into the one registry and hands it, with the local
+///     peer, to the switch.
+/// </summary>
+public abstract class PeerFactoryBuilderBase<TBuilder> : IPeerFactoryBuilder
+    where TBuilder : PeerFactoryBuilderBase<TBuilder>, IPeerFactoryBuilder
 {
-    private readonly IPeerFactoryBuilder builder;
-    private readonly IServiceProvider serviceProvider;
-
-    public IEnumerable<ITransport> Transports { get; }
-
-    public IEnumerable<IMuxerProtocol<IChannelMultiplexer>> MuxerProtocols { get; }
-
-    public IEnumerable<ISecurityProtocol<IRemoteComm>> SecurityProtocols { get; }
-
-    public IEnumerable<IIdentityProtocol> IdentityProtocols { get; }
-
-
-    public IEnumerable<IProtocol<object>> OtherProtocols { get; }
-
-
-    // public ProtocolStack(IPeerFactoryBuilder builder, IServiceProvider serviceProvider, IProtocol protocol)
-    // {
-    //     this.builder = builder;
-    //     this.serviceProvider = serviceProvider;
-    //     Protocol = protocol;
-    //     UpChannelsFactory = ActivatorUtilities.GetServiceOrCreateInstance<ChannelFactory>(serviceProvider);
-    // }
-
-    // public ProtocolStack AddAppLayerProtocol<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
-    // {
-    //     builder.AddAppLayerProtocol(instance);
-    //     return this;
-    // }
-
-    // public ProtocolStack Over<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
-    // {
-    //     ProtocolStack nextNode = new(builder, serviceProvider, PeerFactoryBuilderBase.CreateProtocolInstance(serviceProvider!, instance));
-    //     return Over(nextNode);
-    // }
-
-    // public ProtocolStack Or<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
-    // {
-    //     if (Parent is null)
-    //     {
-    //         throw new NotImplementedException();
-    //     }
-    //     IProtocol protocol = PeerFactoryBuilderBase.CreateProtocolInstance(serviceProvider!, instance);
-    //     ProtocolStack stack = new(builder, serviceProvider, protocol);
-    //     return Or(stack);
-    // }
-
-    // public ProtocolStack Over(ProtocolStack stack)
-    // {
-    //     PeerFactoryBuilderBase<TBuilder, TPeerFactory>.ProtocolStack rootProto = stack.Root ?? stack;
-    //     TopProtocols.Add(rootProto);
-
-    //     if (PrevSwitch != null)
-    //     {
-    //         PrevSwitch.Over(stack);
-    //     }
-
-    //     rootProto.Root = stack.Root = Root ?? this;
-    //     rootProto.Parent = this;
-
-    //     return stack;
-    // }
-
-    // public ProtocolStack Or(ProtocolStack stack)
-    // {
-    //     if (Parent is null)
-    //     {
-    //         throw new NotImplementedException();
-    //     }
-    //     stack.PrevSwitch = this;
-    //     return Parent.Over(stack);
-    // }
-
-    // public override string ToString()
-    // {
-    //     return $"{Protocol.Id}({TopProtocols.Count}): {string.Join(" or ", TopProtocols.Select(p => p.Protocol.Id))}";
-    // }
-}
-
-public abstract class PeerFactoryBuilderBase<TBuilder, TPeerFactory> : IPeerFactoryBuilder
-    where TBuilder : PeerFactoryBuilderBase<TBuilder, TPeerFactory>, IPeerFactoryBuilder
-    where TPeerFactory : PeerFactory
-{
-    private readonly List<IProtocol> _appLayerProtocols = new();
-    public IEnumerable<IProtocol> AppLayerProtocols { get => _appLayerProtocols; }
-
-    internal readonly IServiceProvider ServiceProvider;
-
-    protected readonly ProtocolStack? _stack;
+    private readonly List<ITransport> _transports = [];
+    private readonly List<IMuxerProtocol> _muxerProtocols = [];
+    private readonly List<ISecurityProtocol> _securityProtocols = [];
+    private readonly List<IIdentityProtocol> _identityProtocols = [];
+    private readonly List<IProtocol> _appLayerProtocols = [];
+    private readonly List<IProtocolRef> _managedProtocols = [];
 
     protected PeerFactoryBuilderBase(IServiceProvider? serviceProvider = default)
     {
         ServiceProvider = serviceProvider ?? new ServiceCollection().BuildServiceProvider();
     }
 
-    protected ProtocolStack Over<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
+    protected IServiceProvider ServiceProvider { get; }
+
+    public IEnumerable<IProtocol> AppLayerProtocols => _appLayerProtocols;
+
+    protected TBuilder AddTransport<TProtocol>(TProtocol? instance = default) where TProtocol : class, ITransport
     {
-        return new ProtocolStack(this, ServiceProvider, PeerFactoryBuilderBase.CreateProtocolInstance(ServiceProvider, instance));
+        _transports.Add(PeerFactoryBuilderBase.CreateProtocolInstance(ServiceProvider, instance));
+        return (TBuilder)this;
+    }
+
+    protected TBuilder AddMuxerProtocol<TProtocol>(TProtocol? instance = default) where TProtocol : class, IMuxerProtocol
+    {
+        _muxerProtocols.Add(PeerFactoryBuilderBase.CreateProtocolInstance(ServiceProvider, instance));
+        return (TBuilder)this;
+    }
+
+    protected TBuilder AddSecurityProtocol<TProtocol>(TProtocol? instance = default) where TProtocol : class, ISecurityProtocol
+    {
+        _securityProtocols.Add(PeerFactoryBuilderBase.CreateProtocolInstance(ServiceProvider, instance));
+        return (TBuilder)this;
+    }
+
+    protected void ClearSecurityProtocols()
+    {
+        _securityProtocols.Clear();
+    }
+
+    protected TBuilder AddIdentityProtocol<TProtocol>(TProtocol? instance = default) where TProtocol : class, IIdentityProtocol
+    {
+        _identityProtocols.Add(PeerFactoryBuilderBase.CreateProtocolInstance(ServiceProvider, instance));
+        return (TBuilder)this;
     }
 
     public IPeerFactoryBuilder AddAppLayerProtocol<TProtocol>(TProtocol? instance = default) where TProtocol : IProtocol
     {
-        _appLayerProtocols.Add(PeerFactoryBuilderBase.CreateProtocolInstance(ServiceProvider!, instance));
-        return (TBuilder)this;
+        _appLayerProtocols.Add(PeerFactoryBuilderBase.CreateProtocolInstance(ServiceProvider, instance));
+        return this;
     }
 
-    protected abstract ProtocolStack BuildStack();
+    public IPeerFactoryBuilder AddManagedProtocol<TProtocol, TOut>(ProtocolRef<TProtocol, TOut> protocolRef) where TProtocol : IProtocol<TOut>
+    {
+        _managedProtocols.Add(protocolRef);
+        return this;
+    }
 
     public IPeerFactory Build()
     {
-        ProtocolStack transportLayer = BuildStack();
-        ProtocolStack? appLayer = default;
-
-        foreach (IProtocol appLayerProtocol in _appLayerProtocols)
+        ILocalPeer localPeer = ServiceProvider.GetService<ILocalPeer>() ?? new LocalPeer(new Identity());
+        IProtocolRegistry diRegistry = ServiceProvider.GetService<IProtocolRegistry>() ?? new DIProtocolRegistry(ServiceProvider);
+        var builderRegistry = new InMemoryProtocolRegistry
         {
-            appLayer = appLayer is null ? transportLayer.Over(appLayerProtocol) : appLayer.Or(appLayerProtocol);
-        }
-
-        ProtocolStack? root = transportLayer.Root;
-
-        if (root?.Protocol is null || root.UpChannelsFactory is null)
-        {
-            throw new ApplicationException("Root protocol is not properly defined");
-        }
-
-        static void SetupChannelFactories(ProtocolStack root)
-        {
-            root.UpChannelsFactory.Setup(new Dictionary<IProtocol, IChannelFactory>(root.TopProtocols
-                     .Select(p => new KeyValuePair<IProtocol, IChannelFactory>(p.Protocol, p.UpChannelsFactory))));
-            foreach (ProtocolStack topProto in root.TopProtocols)
-            {
-                if (!root.TopProtocols.Any())
-                {
-                    return;
-                }
-                SetupChannelFactories(topProto);
-            }
-        }
-
-        SetupChannelFactories(root);
-
-        TPeerFactory result = ActivatorUtilities.GetServiceOrCreateInstance<TPeerFactory>(ServiceProvider);
-        result.Setup(root?.Protocol!, root!.UpChannelsFactory);
-        return result;
-    }
-
-    private class Layer
-    {
-        public List<IProtocol> Protocols { get; } = new();
-        public bool IsSelector { get; set; }
-
-        public override string ToString()
-        {
-            return (IsSelector ? "(selector)" : "") + string.Join(",", Protocols.Select(p => p.Id));
-        }
+            Transports = _transports,
+            MuxerProtocols = _muxerProtocols,
+            SecurityProtocols = _securityProtocols,
+            IdentityProtocols = _identityProtocols,
+            OtherProtocols = _appLayerProtocols,
+        };
+        return new ManagedPeerSwitch(localPeer, new CompositeProtocolRegistry(diRegistry, builderRegistry), ServiceProvider);
     }
 }

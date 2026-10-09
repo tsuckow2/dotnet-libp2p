@@ -35,7 +35,11 @@ public class ManagedProtocolComm<TComm>(TComm _comm, IManagedRemoteComm _parent)
 ///     <see cref="ProtocolRef{TProtocol, TOut}"/> so dialing is type-safe:
 ///     no string ids and no casting the result back.
 /// </summary>
-public interface IProtocolRef<out TProtocol, out TOut> where TProtocol : IProtocol<TOut>
+public interface IProtocolRef
+{
+}
+
+public interface IProtocolRef<out TProtocol, out TOut> : IProtocolRef where TProtocol : IProtocol<TOut>
 {
 }
 

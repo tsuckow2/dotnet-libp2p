@@ -6,9 +6,23 @@ using Multiformats.Address;
 
 namespace Nethermind.Libp2p.Core;
 
-public class ManagedPeerSwitch(ILocalPeer localPeer, IProtocolRegistry protocolRegistry, IServiceProvider serviceProvider) : IManagedPeerSwitch
+public class ManagedPeerSwitch : IManagedPeerSwitch
 {
     private readonly ConcurrentDictionary<Identity, IRemotePeer> _remotePeers = new();
+    private readonly ILocalPeer _localPeer;
+    private readonly IProtocolRegistry _protocolRegistry;
+    private readonly IServiceProvider _serviceProvider;
+
+    internal ManagedPeerSwitch(ILocalPeer localPeer, IProtocolRegistry protocolRegistry, IServiceProvider serviceProvider)
+    {
+        _localPeer = localPeer;
+        _protocolRegistry = protocolRegistry;
+        _serviceProvider = serviceProvider;
+        if (localPeer is LocalPeer concrete)
+        {
+            concrete.AttachSwitch(this);
+        }
+    }
 
     internal IRemotePeer GetRemotePeer(Identity identity)
     {

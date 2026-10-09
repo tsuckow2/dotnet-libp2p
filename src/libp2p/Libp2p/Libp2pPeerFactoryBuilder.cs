@@ -4,47 +4,35 @@
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
-using System.Runtime.Versioning;
 
 namespace Nethermind.Libp2p.Stack;
 
-[RequiresPreviewFeatures]
-public class Libp2pPeerFactoryBuilder : PeerFactoryBuilderBase<Libp2pPeerFactoryBuilder, Libp2pPeerFactory>,
+/// <summary>
+///     The default stack, registered flat by role — the same protocols the
+///     old ProtocolStack tree composed with Over/Or:
+///     IpTcp transport, Noise (or Plaintext) security, Yamux muxer,
+///     Multistream selector, Identify, and the pubsub protocols as
+///     app-layer. Quic is not registered yet: it still speaks the
+///     channel-tier transport shape and needs its ITransport port.
+/// </summary>
+public class Libp2pPeerFactoryBuilder : PeerFactoryBuilderBase<Libp2pPeerFactoryBuilder>,
     ILibp2pPeerFactoryBuilder
 {
-    private bool enforcePlaintext;
+    public Libp2pPeerFactoryBuilder(IServiceProvider? serviceProvider = default) : base(serviceProvider)
+    {
+        AddTransport<IpTcpProtocol>();
+        AddSecurityProtocol<NoiseProtocol>();
+        AddMuxerProtocol<YamuxProtocol>();
+        AddIdentityProtocol<IdentifyProtocol>();
+        AddAppLayerProtocol<MultistreamProtocol>();
+        AddAppLayerProtocol<GossipsubProtocol>();
+        AddAppLayerProtocol<FloodsubProtocol>();
+    }
 
     public ILibp2pPeerFactoryBuilder WithPlaintextEnforced()
     {
-        enforcePlaintext = true;
+        ClearSecurityProtocols();
+        AddSecurityProtocol<PlainTextProtocol>();
         return this;
-    }
-
-    public Libp2pPeerFactoryBuilder(IServiceProvider? serviceProvider = default) : base(serviceProvider)
-    {
-    }
-
-    protected override ProtocolStack BuildStack()
-    {
-        ProtocolStack tcpEncryptionStack = enforcePlaintext ?
-            Over<PlainTextProtocol>() :
-            Over<NoiseProtocol>();
-
-        ProtocolStack tcpStack =
-            Over<IpTcpProtocol>()
-            .Over<MultistreamProtocol>()
-            .Over(tcpEncryptionStack)
-            .Over<MultistreamProtocol>()
-            .Over<YamuxProtocol>();
-
-        return
-            Over<MultiaddressBasedSelectorProtocol>()
-            .Over<QuicProtocol>().Or(tcpStack)
-            .Over<MultistreamProtocol>()
-            .AddAppLayerProtocol<IdentifyProtocol>()
-            //.AddAppLayerProtocol<GossipsubProtocolV12>()
-            //.AddAppLayerProtocol<GossipsubProtocolV11>()
-            .AddAppLayerProtocol<GossipsubProtocol>()
-            .AddAppLayerProtocol<FloodsubProtocol>();
     }
 }

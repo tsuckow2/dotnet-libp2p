@@ -214,7 +214,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport
         _ = upChannel.CloseAsync();
     }
 
-    public async Task<IRemotePeerChannel> DialAsync(Multiaddress address)
+    public async Task<IRemoteComm> DialAsync(Multiaddress address)
     {
         Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         var isIP4 = address.Has<IP4>();
@@ -235,36 +235,39 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport
             throw;
         }
 
-        IPEndPoint localEndpoint = (IPEndPoint)client.LocalEndPoint!;
-        IPEndPoint remoteEndpoint = (IPEndPoint)client.RemoteEndPoint!;
-
-
-        var remoteMultiaddress = new Multiaddress();
-        var remoteIpAddress = isIP4 ? remoteEndpoint.Address.MapToIPv4() : remoteEndpoint.Address.MapToIPv6();
-        remoteMultiaddress = isIP4 ? remoteMultiaddress.Add<IP4>(remoteIpAddress) : remoteMultiaddress.Add<IP6>(remoteIpAddress);
-        context.RemoteEndpoint = remoteMultiaddress.Add<TCP>(remoteEndpoint.Port);
-
-
-        var localMultiaddress = new Multiaddress();
-        var localIpAddress = isIP4 ? localEndpoint.Address.MapToIPv4() : localEndpoint.Address.MapToIPv6();
-        localMultiaddress = isIP4 ? localMultiaddress.Add<IP4>(localIpAddress) : localMultiaddress.Add<IP6>(localIpAddress);
-
-        context.LocalPeer.Address = context.LocalEndpoint.Add<P2P>(context.LocalPeer.Identity.PeerId.ToString());
-
         var stream = new NetworkStream(client, true /* Closing Stream, closes socket */);
-
-        var c = new GenericRemoteChannel(false, new StreamChannel(stream));
         var connection = new GenericRemoteConnection(address, () => { stream.Close(); return Task.CompletedTask; });
-        return new GenericRemotePeerChannel(false, connection, new StreamChannel(stream));
+        return new GenericRemoteComm(false, new StreamChannel(stream), connection);
     }
-}
 
-class IpTcpRemoteConnection(Multiaddress Address, NetworkStream stream)
-{
-    public Multiaddress Address { get; }
-    public IChannelMultiplexer? Mux { get; }
-    public Task DisconnectAsync()
+    public async Task ListenAsync(Multiaddress localAddress, Action<IChannel, Multiaddress> onConnection, CancellationToken token)
     {
-        return Task.CompletedTask
+        var isIP4 = localAddress.Has<IP4>();
+        MultiaddressProtocol ipProtocol = isIP4 ? localAddress.Get<IP4>() : localAddress.Get<IP6>();
+        IPAddress ipAddress = IPAddress.Parse(ipProtocol.ToString());
+        int tcpPort = localAddress.Get<TCP>().Port;
+
+        TcpListener listener = new(new IPEndPoint(ipAddress, tcpPort));
+        listener.Start();
+        token.Register(() => listener.Stop());
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                TcpClient client = await listener.AcceptTcpClientAsync(token);
+                IPEndPoint remoteEndpoint = (IPEndPoint)client.Client.RemoteEndPoint!;
+                var remoteAddress = isIP4
+                    ? new Multiaddress().Add<IP4>(remoteEndpoint.Address.MapToIPv4()).Add<TCP>(remoteEndpoint.Port)
+                    : new Multiaddress().Add<IP6>(remoteEndpoint.Address.MapToIPv6()).Add<TCP>(remoteEndpoint.Port);
+                var stream = client.GetStream();
+                onConnection(new StreamChannel(stream), remoteAddress);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (SocketException) when (token.IsCancellationRequested) { }
+        finally
+        {
+            listener.Stop();
+        }
     }
 }

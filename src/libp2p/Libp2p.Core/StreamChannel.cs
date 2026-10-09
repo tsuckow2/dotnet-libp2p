@@ -49,12 +49,31 @@ public class StreamChannel(Stream stream) : IChannel
         return IOResult.Ok;
     }
 
-    public ValueTask<IOResult> WriteEofAsync(CancellationToken token = default) => Writer.WriteEofAsync(token);
+    private readonly TaskCompletionSource _completion = new();
 
-    public TaskAwaiter GetAwaiter() => Completion.Task.GetAwaiter();
-
-    public ValueTask CloseAsync()
+    // A plain Stream cannot half-close; flushing is the faithful equivalent.
+    public async ValueTask<IOResult> WriteEofAsync(CancellationToken token = default)
     {
-        return stream.DisposeAsync();
+        try
+        {
+            await stream.FlushAsync(token);
+        }
+        catch (TaskCanceledException)
+        {
+            return IOResult.Cancelled;
+        }
+        catch (ObjectDisposedException)
+        {
+            return IOResult.Ended;
+        }
+        return IOResult.Ok;
+    }
+
+    public TaskAwaiter GetAwaiter() => _completion.Task.GetAwaiter();
+
+    public async ValueTask CloseAsync()
+    {
+        await stream.DisposeAsync();
+        _completion.TrySetResult();
     }
 }
