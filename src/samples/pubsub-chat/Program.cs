@@ -22,7 +22,7 @@ ServiceProvider serviceProvider = new ServiceCollection()
             }))
     .BuildServiceProvider();
 
-IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
+IManagedPeerSwitch peerSwitch = serviceProvider.GetService<IManagedPeerSwitch>()!;
 
 ILogger logger = serviceProvider.GetService<ILoggerFactory>()!.CreateLogger("Pubsub Chat");
 CancellationTokenSource ts = new();
@@ -30,7 +30,7 @@ CancellationTokenSource ts = new();
 Identity localPeerIdentity = new();
 string addr = $"/ip4/0.0.0.0/udp/0/quic-v1/p2p/{localPeerIdentity.PeerId}";
 
-ILocalPeer peer = peerFactory.Create(localPeerIdentity, Multiaddress.Decode(addr));
+ILocalPeer peer = peerSwitch.Create(localPeerIdentity, Multiaddress.Decode(addr));
 
 PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
 ITopic topic = router.Subscribe("chat-room:awesome-chat-room");

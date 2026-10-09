@@ -2,94 +2,82 @@
 // SPDX-License-Identifier: MIT
 
 using System.Buffers;
-using System.Text;
 using Nethermind.Libp2p.Core;
 using ProtoBuf;
 
-class BitSwapProtocolChannel : IProtocolChannel
+/// <summary>
+///     The typed comm Bitswap hands back: the channel plus the wants and
+///     blocks received over it. The block-exchange engine (wantlist
+///     management, block store) hooks onto these events; the protocol
+///     itself only speaks wire format.
+/// </summary>
+class BitSwapProtocolChannel
 {
-    public IRemotePeerChannel Channel { get; }
-    public BitSwapProtocolChannel(IRemotePeerChannel channel)
+    public IChannel Channel { get; }
+
+    /// <summary>Raised for each wantlist entry: (block cid bytes, is cancel).</summary>
+    public event Action<byte[], bool>? OnWant;
+
+    /// <summary>Raised for each received block: (cid prefix bytes, data).</summary>
+    public event Action<byte[], byte[]>? OnBlock;
+
+    public BitSwapProtocolChannel(IChannel channel)
     {
         Channel = channel;
     }
 
+    internal void RaiseWant(byte[] block, bool cancel) => OnWant?.Invoke(block, cancel);
+    internal void RaiseBlock(byte[] prefix, byte[] data) => OnBlock?.Invoke(prefix, data);
 }
 
-internal class BitSwap11Protocol : IProtocol
+/// <summary>
+///     Bitswap 1.1.0 (https://github.com/ipfs/specs/blob/main/BITSWAP.md),
+///     as a managed-tier protocol: negotiate, then exchange protobuf
+///     Messages of wantlists and block payloads.
+/// </summary>
+internal class BitSwap11Protocol : SymmetricProtocol<BitSwapProtocolChannel>
 {
-    private static readonly ConsoleReader Reader = new();
-    public string Id => "/ipfs/bitswap/1.1.0";
+    public static ProtocolRef<BitSwap11Protocol, BitSwapProtocolChannel> Ref => new();
 
+    public override string Id => "/ipfs/bitswap/1.1.0";
 
-    protected override async Task NegotiateAsync(IRemotePeerChannel channel)
+    protected override async Task NegotiateAsync(IManagedRemoteComm comm)
     {
-        await NegotiationUtils.NegotiateProtocolAsync(channel, Id);
+        await NegotiationUtils.NegotiateProtocolAsync(comm, Id);
     }
 
-    static public BitSwapProtocolChannel Assert(IProtocolChannel channel)
+    protected override async Task<IManagedProtocolComm<BitSwapProtocolChannel>> ConnectAsync(IManagedRemoteComm comm, bool isListener)
     {
-        if (channel is not BitSwapProtocolChannel chatChannel)
+        var protocolChannel = new BitSwapProtocolChannel(comm.Channel);
+        _ = Task.Run(async () =>
         {
-            throw new InvalidOperationException("Invalid channel type");
-        }
-        return chatChannel;
-    }
-
-    public Task<IProtocolChannel> DialAsync(IRemotePeerChannel channel)
-    {
-        throw new NotImplementedException();
-    }
-
-    public async Task ListenAsync(IRemotePeerChannel channel)
-    {
-        var c = channel.Channel;
-
-        while (true)
-        {
-            var request = await ReadProtobufAsync<Message>(c);
-    
-
-            // Process want list
-            if (request.wantlist != null && request.wantlist.entries != null)
+            while (true)
             {
-                foreach (var entry in request.wantlist.entries)
+                Message request = await ReadProtobufAsync<Message>(comm.Channel);
+
+                // Process want list
+                if (request.wantlist?.entries != null)
                 {
-                    var cid = Cid.Read(entry.block);
-                    if (entry.cancel)
+                    foreach (Entry entry in request.wantlist.entries)
                     {
-                        // TODO: Unwant specific to remote peer
-                        Bitswap.Unwant(cid);
+                        protocolChannel.RaiseWant(entry.block, entry.cancel);
                     }
-                    else
+                }
+
+                // Forward received blocks to the engine
+                if (request.payload != null)
+                {
+                    foreach (Block sentBlock in request.payload)
                     {
-                        log.Debug($"{connection.RemotePeer.Id} wants {cid}");
-                        // TODO: Should we have a timeout?
-                        var _ = GetBlockAsync(cid, connection.RemotePeer, CancellationToken.None);
+                        protocolChannel.RaiseBlock(sentBlock.prefix, sentBlock.data);
                     }
                 }
             }
+        });
 
-            // Forward sent blocks to the block service.  Eventually
-            // bitswap will here about and them and then continue
-            // any tasks (GetBlockAsync) waiting for the block.
-            if (request.payload != null)
-            {
-                log.Debug($"got block(s) from {connection.RemotePeer}");
-                foreach (var sentBlock in request.payload)
-                {
-                    using (var ms = new MemoryStream(sentBlock.prefix))
-                    {
-                        var version = ms.ReadVarint32();
-                        var contentType = ms.ReadMultiCodec().Name;
-                        var multiHash = MultiHash.GetHashAlgorithmName(ms.ReadVarint32());
-                        await Bitswap.OnBlockReceivedAsync(connection.RemotePeer, sentBlock.data, contentType, multiHash);
-                    }
-                }
-            }
-        }
-        //TODO
+        return new ManagedProtocolComm<BitSwapProtocolChannel>(protocolChannel, comm);
     }
+
     public static async Task<T> ReadProtobufAsync<T>(IChannel channel)
     {
         var length = await channel.ReadVarintAsync().ConfigureAwait(false);
@@ -148,198 +136,4 @@ internal class BitSwap11Protocol : IProtocol
         [ProtoMember(3)]
         public List<Block> payload;         // used to send Blocks in bitswap 1.1.0
     }
-
 }
-
-
-
-
-
-
-
-#pragma warning disable 0649 // disable warning about unassinged fields
-#pragma warning disable 0169// disable warning about unassinged fields
-
-namespace Ipfs.Engine.BlockExchange
-{
-    /// <summary>
-    ///   Bitswap Protocol version 1.1.0 
-    /// </summary>
-    public class Bitswap11 : IBitswapProtocol
-    {
-        static ILog log = LogManager.GetLogger(typeof(Bitswap11));
-
-        /// <inheritdoc />
-        public string Name { get; } = "ipfs/bitswap";
-
-        /// <inheritdoc />
-        public SemVersion Version { get; } = new SemVersion(1, 1);
-
-        /// <inheritdoc />
-        public override string ToString()
-        {
-            return $"/{Name}/{Version}";
-        }
-
-        /// <summary>
-        ///   The <see cref="Bitswap"/> service.
-        /// </summary>
-        public Bitswap Bitswap { get; set; }
-
-        /// <inheritdoc />
-        public async Task ProcessMessageAsync(PeerConnection connection, Stream stream, CancellationToken cancel = default(CancellationToken))
-        {
-            // There is a race condition between getting the remote identity and
-            // the remote sending the first wantlist.
-            await connection.IdentityEstablished.Task.ConfigureAwait(false);
-
-            while (true)
-            {
-                var request = await ProtoBufHelper.ReadMessageAsync<Message>(stream, cancel).ConfigureAwait(false);
-
-                // Process want list
-                if (request.wantlist != null && request.wantlist.entries != null)
-                {
-                    foreach (var entry in request.wantlist.entries)
-                    {
-                        var cid = Cid.Read(entry.block);
-                        if (entry.cancel)
-                        {
-                            // TODO: Unwant specific to remote peer
-                            Bitswap.Unwant(cid);
-                        }
-                        else
-                        {
-                            log.Debug($"{connection.RemotePeer.Id} wants {cid}");
-                            // TODO: Should we have a timeout?
-                            var _ = GetBlockAsync(cid, connection.RemotePeer, CancellationToken.None);
-                        }
-                    }
-                }
-
-                // Forward sent blocks to the block service.  Eventually
-                // bitswap will here about and them and then continue
-                // any tasks (GetBlockAsync) waiting for the block.
-                if (request.payload != null)
-                {
-                    log.Debug($"got block(s) from {connection.RemotePeer}");
-                    foreach (var sentBlock in request.payload)
-                    {
-                        using (var ms = new MemoryStream(sentBlock.prefix))
-                        {
-                            var version = ms.ReadVarint32();
-                            var contentType = ms.ReadMultiCodec().Name;
-                            var multiHash = MultiHash.GetHashAlgorithmName(ms.ReadVarint32());
-                            await Bitswap.OnBlockReceivedAsync(connection.RemotePeer, sentBlock.data, contentType, multiHash);
-                        }
-                    }
-                }
-            }
-        }
-
-        async Task GetBlockAsync(Cid cid, Peer remotePeer, CancellationToken cancel)
-        {
-            // TODO: Determine if we will fetch the block for the remote
-            try
-            {
-                IDataBlock block;
-                if (null != await Bitswap.BlockService.StatAsync(cid, cancel).ConfigureAwait(false))
-                {
-                    block = await Bitswap.BlockService.GetAsync(cid, cancel).ConfigureAwait(false);
-                }
-                else
-                {
-                    block = await Bitswap.WantAsync(cid, remotePeer.Id, cancel).ConfigureAwait(false);
-                }
-
-                // Send block to remote.
-                using (var stream = await Bitswap.Swarm.DialAsync(remotePeer, this).ConfigureAwait(false))
-                {
-                    await SendAsync(stream, block, cancel).ConfigureAwait(false);
-                }
-                await Bitswap.OnBlockSentAsync(remotePeer, block).ConfigureAwait(false);
-            }
-            catch (TaskCanceledException)
-            {
-                // eat it
-            }
-            catch (Exception e)
-            {
-                log.Warn("getting block for remote failed", e);
-                // eat it.
-            }
-        }
-
-        /// <inheritdoc />
-        public async Task SendWantsAsync(
-            Stream stream,
-            IEnumerable<WantedBlock> wants,
-            bool full = true,
-            CancellationToken cancel = default(CancellationToken)
-            )
-        {
-            var message = new Message
-            {
-                wantlist = new Wantlist
-                {
-                    full = full,
-                    entries = wants
-                        .Select(w =>
-                        {
-                            return new Entry
-                            {
-                                block = w.Id.ToArray()
-                            };
-                        })
-                        .ToArray()
-                },
-                payload = new List<Block>(0)
-            };
-
-            ProtoBuf.Serializer.SerializeWithLengthPrefix<Message>(stream, message, PrefixStyle.Base128);
-            await stream.FlushAsync(cancel).ConfigureAwait(false);
-        }
-
-        internal async Task SendAsync(
-            Stream stream,
-            IDataBlock block,
-            CancellationToken cancel = default(CancellationToken)
-            )
-        {
-            log.Debug($"Sending block {block.Id}");
-            var message = new Message
-            {
-                payload = new List<Block>
-                {
-                    new Block
-                    {
-                        prefix =  GetCidPrefix(block.Id),
-                        data = block.DataBytes
-                    }
-                }
-            };
-
-            ProtoBuf.Serializer.SerializeWithLengthPrefix<Message>(stream, message, PrefixStyle.Base128);
-            await stream.FlushAsync(cancel).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        ///   Gets the CID "prefix".
-        /// </summary>
-        /// <param name="id">
-        ///   The CID.
-        /// </param>
-        /// <returns>
-        ///   A byte array of consisting of cid version, multicodec and multihash prefix (type + length).
-        /// </returns>
-        byte[] GetCidPrefix(Cid id)
-        {
-            using (var ms = new MemoryStream())
-            {
-                ms.WriteVarint(id.Version);
-                ms.WriteMultiCodec(id.ContentType);
-                ms.WriteVarint(id.Hash.Algorithm.Code);
-                ms.WriteVarint(id.Hash.Digest.Length);
-                return ms.ToArray();
-            }
-        }

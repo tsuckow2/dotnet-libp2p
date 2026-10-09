@@ -29,6 +29,17 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         return _remotePeers.GetOrAdd(identity, static id => new RemotePeer(id));
     }
 
+    public ILocalPeer Create(Identity? identity = null, Multiaddress? localAddr = null)
+    {
+        var peer = new LocalPeer(identity ?? new Identity());
+        if (localAddr is not null)
+        {
+            peer.Address = localAddr;
+        }
+        peer.AttachSwitch(this);
+        return peer;
+    }
+
     public Task<IListener> ListenAsync(ILocalPeer peer, CancellationToken token = default)
     {
         // Registry-driven listen + upgrade sequence: plan Phase 3.

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using Multiformats.Address;
+
 namespace Nethermind.Libp2p.Core;
 
 /// <summary>
@@ -12,4 +14,10 @@ namespace Nethermind.Libp2p.Core;
 public interface IManagedPeerSwitch : IPeerFactory
 {
     Task<IListener> ListenAsync(ILocalPeer localPeer, CancellationToken token = default);
+
+    /// <summary>
+    ///     Create a local peer attached to this switch, so its
+    ///     connection-bound surface (DialAsync/ListenAsync) delegates here.
+    /// </summary>
+    ILocalPeer Create(Identity? identity = null, Multiaddress? localAddr = null);
 }

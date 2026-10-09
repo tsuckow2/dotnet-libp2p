@@ -28,6 +28,7 @@ public static class ServiceProviderExtensions
             .AddScoped<ILibp2pPeerFactoryBuilder>(sp => sp.GetRequiredService<Libp2pPeerFactoryBuilder>())
             .AddScoped<IPeerFactoryBuilder>(sp => sp.GetRequiredService<Libp2pPeerFactoryBuilder>())
             .AddScoped(sp => sp.GetRequiredService<IPeerFactoryBuilder>().Build())
+            .AddScoped<IManagedPeerSwitch>(sp => (IManagedPeerSwitch)sp.GetRequiredService<IPeerFactory>())
             .AddScoped<PubsubRouter>()
             .AddScoped<MultiplexerSettings>()
             ;

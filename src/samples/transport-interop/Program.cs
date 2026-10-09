@@ -25,7 +25,7 @@ try
     int testTimeoutSeconds = int.Parse(Environment.GetEnvironmentVariable("test_timeout_seconds") ?? "180");
 
     TestPlansPeerFactoryBuilder builder = new TestPlansPeerFactoryBuilder(transport, muxer, security);
-    IPeerFactory peerFactory = builder.Build();
+    IManagedPeerSwitch peerFactory = (IManagedPeerSwitch)builder.Build();
 
     Log($"Connecting to redis at {redisAddr}...");
     ConnectionMultiplexer redis = ConnectionMultiplexer.Connect(redisAddr);
@@ -100,11 +100,9 @@ catch (Exception ex)
 static void Log(string info) => Console.Error.WriteLine(info);
 static void PrintResult(string info) => Console.WriteLine(info);
 
-class TestPlansPeerFactoryBuilder : PeerFactoryBuilderBase<TestPlansPeerFactoryBuilder, PeerFactory>
+class TestPlansPeerFactoryBuilder : PeerFactoryBuilderBase<TestPlansPeerFactoryBuilder>
 {
     private readonly string transport;
-    private readonly string? muxer;
-    private readonly string? security;
     private static IPeerFactoryBuilder? defaultPeerFactoryBuilder;
 
     public TestPlansPeerFactoryBuilder(string transport, string? muxer, string? security)
@@ -121,42 +119,33 @@ class TestPlansPeerFactoryBuilder : PeerFactoryBuilderBase<TestPlansPeerFactoryB
     {
         defaultPeerFactoryBuilder = this;
         this.transport = transport;
-        this.muxer = muxer;
-        this.security = security;
-    }
 
-    private static readonly string[] stacklessProtocols = ["quic", "quic-v1", "webtransport"];
-
-    protected override ProtocolStack BuildStack()
-    {
-        ProtocolStack stack = transport switch
+        // Flat registration by role — what BuildStack composed with
+        // Over/Or before ProtocolStack was removed.
+        _ = transport switch
         {
-            "tcp" => Over<IpTcpProtocol>(),
-            // TODO: Improve QUIC imnteroperability
-            "quic-v1" => Over<QuicProtocol>(),
-            _ => throw new NotImplementedException(),
+            "tcp" => AddTransport<IpTcpProtocol>(),
+            // TODO: Improve QUIC interoperability (QuicProtocol has no ITransport port yet)
+            _ => throw new NotImplementedException($"Transport {transport} is not supported"),
         };
 
-        stack = stack.Over<MultistreamProtocol>();
-
-        if (!stacklessProtocols.Contains(transport))
+        if (transport is not "quic" and not "quic-v1" and not "webtransport")
         {
-            stack = security switch
+            _ = security switch
             {
-                "noise" => stack.Over<NoiseProtocol>(),
-                _ => throw new NotImplementedException(),
+                "noise" => AddSecurityProtocol<NoiseProtocol>(),
+                _ => throw new NotImplementedException($"Security {security} is not supported"),
             };
-            stack = stack.Over<MultistreamProtocol>();
-            stack = muxer switch
+            _ = muxer switch
             {
-                "yamux" => stack.Over<YamuxProtocol>(),
-                _ => throw new NotImplementedException(),
+                "yamux" => AddMuxerProtocol<YamuxProtocol>(),
+                _ => throw new NotImplementedException($"Muxer {muxer} is not supported"),
             };
-            stack = stack.Over<MultistreamProtocol>();
         }
 
-        return stack.AddAppLayerProtocol<IdentifyProtocol>()
-                    .AddAppLayerProtocol<PingProtocol>();
+        AddAppLayerProtocol<MultistreamProtocol>();
+        AddAppLayerProtocol<IdentifyProtocol>();
+        AddAppLayerProtocol<PingProtocol>();
     }
 
     public string MakeAddress(string ip = "0.0.0.0", string port = "0") => transport switch
