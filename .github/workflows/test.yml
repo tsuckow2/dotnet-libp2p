@@ -3,7 +3,6 @@ name: Test
 on:
   pull_request:
   push:
-    branches: [main]
 
 jobs:
   test:
@@ -35,8 +34,11 @@ jobs:
         env:
           TEST_OPTS: -c ${{ env.BUILD_CONFIG }} --no-restore
         run: |
-          dotnet test Libp2p.Core.Tests ${{ env.PACK_OPTS }}
-          #dotnet test Libp2p.Protocols.Multistream.Tests ${{ env.PACK_OPTS }}
-          dotnet test Libp2p.Protocols.Noise.Tests ${{ env.PACK_OPTS }}
-          dotnet test Libp2p.Protocols.Pubsub.Tests ${{ env.PACK_OPTS }}
-          dotnet test Libp2p.Protocols.Quic.Tests ${{ env.PACK_OPTS }}
+          dotnet test Libp2p.Core.Tests ${{ env.TEST_OPTS }}
+          # Multistream stays disabled, as upstream had it: its
+          # handshake test is timing-sensitive and flakes under load.
+          #dotnet test Libp2p.Protocols.Multistream.Tests ${{ env.TEST_OPTS }}
+          dotnet test Libp2p.Protocols.Noise.Tests ${{ env.TEST_OPTS }}
+          dotnet test Libp2p.Protocols.Pubsub.Tests ${{ env.TEST_OPTS }}
+          dotnet test Libp2p.Protocols.Yamux.Tests ${{ env.TEST_OPTS }}
+          dotnet test Libp2p.Transports/Quic.Tests ${{ env.TEST_OPTS }}
