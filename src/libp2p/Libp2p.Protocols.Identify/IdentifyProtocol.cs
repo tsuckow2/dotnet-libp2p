@@ -3,6 +3,7 @@
 
 using Google.Protobuf;
 using Nethermind.Libp2p.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.Libp2p.Core.Dto;
 
@@ -17,15 +18,24 @@ public class IdentifyProtocol : IIdentityProtocol
     private readonly string _protocolVersion;
 
     private readonly ILogger? _logger;
-    private readonly IPeerFactoryBuilder _peerFactoryBuilder;
+    private readonly IServiceProvider _serviceProvider;
+    private IPeerFactoryBuilder? _peerFactoryBuilder;
 
-    public IdentifyProtocol(IPeerFactoryBuilder peerFactoryBuilder, IdentifyProtocolSettings? settings = null, ILoggerFactory? loggerFactory = null)
+    public IdentifyProtocol(IServiceProvider serviceProvider, IdentifyProtocolSettings? settings = null, ILoggerFactory? loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<IdentifyProtocol>();
-        _peerFactoryBuilder = peerFactoryBuilder;
+        _serviceProvider = serviceProvider;
 
         _agentVersion = settings?.AgentVersion ?? IdentifyProtocolSettings.Default.AgentVersion!;
         _protocolVersion = settings?.ProtocolVersion ?? IdentifyProtocolSettings.Default.ProtocolVersion!;
+    }
+
+    // The builder creates this protocol, so it can only be resolved lazily,
+    // once construction has finished; resolving it in the constructor
+    // deadlocks the DI scope that is building the stack.
+    private IPeerFactoryBuilder PeerFactoryBuilder
+    {
+        get => _peerFactoryBuilder ??= _serviceProvider.GetRequiredService<IPeerFactoryBuilder>();
     }
 
     public string Id => "/ipfs/id/1.0.0";
@@ -58,7 +68,7 @@ public class IdentifyProtocol : IIdentityProtocol
             PublicKey = context.LocalPeer.Identity.PublicKey.ToByteString(),
             ListenAddrs = { ByteString.CopyFrom(context.LocalEndpoint.ToBytes()) },
             ObservedAddr = ByteString.CopyFrom(context.RemoteEndpoint.ToBytes()),
-            Protocols = { _peerFactoryBuilder.AppLayerProtocols.Select(p => p.Id) }
+            Protocols = { PeerFactoryBuilder.AppLayerProtocols.Select(p => p.Id) }
         };
         byte[] ar = new byte[identify.CalculateSize()];
         identify.WriteTo(ar);
