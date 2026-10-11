@@ -9,6 +9,13 @@ namespace Nethermind.Libp2p.Core;
 public class PeerContext : IPeerContext
 {
     public string Id { get; set; }
+
+    /// <summary>
+    ///     Identifies the connection this context belongs to. Forks share
+    ///     the id (MemberwiseClone copies it), so any layer of the stack can
+    ///     find the switch's connection object for its context.
+    /// </summary>
+    internal Guid ConnectionId { get; set; }
     public IPeer LocalPeer { get; set; }
     public IPeer RemotePeer { get; set; }
     public Multiaddress RemoteEndpoint { get; set; }

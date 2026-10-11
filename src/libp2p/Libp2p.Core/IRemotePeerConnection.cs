@@ -38,7 +38,6 @@ public interface IRemotePeerConnection
     IRemotePeer RemotePeer { get; }
     IManagedPeer Managed { get; }
     IChannelMultiplexer? Mux { get; }
-    IChannel Channel { get; }
     ITransportConnection TransportConnection { get; }
     Task DisconnectAsync();
 }

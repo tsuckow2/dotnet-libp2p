@@ -11,7 +11,7 @@ using Multiformats.Address.Protocols;
 
 namespace Nethermind.Libp2p.Protocols;
 
-public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport
+public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, IProtocol
 {
     private readonly ILogger? _logger = loggerFactory?.CreateLogger<IpTcpProtocol>();
 

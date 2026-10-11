@@ -56,9 +56,9 @@ internal class RemotePeer : IRemotePeer
 
     public Task DialAsync<TProtocol>(CancellationToken token = default) where TProtocol : IProtocol
     {
-        // Channel-tier protocol dialing over a live connection lands with
-        // the switch's upgrade sequence (plan Phase 3).
-        throw new NotImplementedException("Protocol dialing over a connection is not wired yet.");
+        return _connection is RemotePeerConnection connection
+            ? connection.DialChannelProtocolAsync<TProtocol>(token)
+            : throw new NotImplementedException("This peer has no live connection; dial it through the switch first.");
     }
 
     public Task DisconnectAsync()

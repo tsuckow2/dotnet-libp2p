@@ -13,3 +13,4 @@ public class ChannelRequest : IChannelRequest
         return $"Request for {SubProtocol?.Id ?? "unknown protocol"}";
     }
 }
+

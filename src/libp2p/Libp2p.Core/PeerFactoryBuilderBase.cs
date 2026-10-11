@@ -28,7 +28,7 @@ public abstract class PeerFactoryBuilderBase<TBuilder> : IPeerFactoryBuilder
     private readonly List<ISecurityProtocol> _securityProtocols = [];
     private readonly List<IIdentityProtocol> _identityProtocols = [];
     private readonly List<IProtocol> _appLayerProtocols = [];
-    private readonly List<IProtocolRef> _managedProtocols = [];
+    private readonly List<Func<ConnectionRegistry, IProtocol>> _managedAdapterFactories = [];
 
     protected PeerFactoryBuilderBase(IServiceProvider? serviceProvider = default)
     {
@@ -76,7 +76,9 @@ public abstract class PeerFactoryBuilderBase<TBuilder> : IPeerFactoryBuilder
 
     public IPeerFactoryBuilder AddManagedProtocol<TProtocol, TOut>(ProtocolRef<TProtocol, TOut> protocolRef) where TProtocol : IProtocol<TOut>
     {
-        _managedProtocols.Add(protocolRef);
+        // The switch owns the connection registry the adapter needs, so
+        // registration stores a factory for it rather than the adapter.
+        _managedAdapterFactories.Add(registry => new ManagedProtocolAdapter<TProtocol, TOut>(ServiceProvider, registry));
         return this;
     }
 
@@ -92,6 +94,6 @@ public abstract class PeerFactoryBuilderBase<TBuilder> : IPeerFactoryBuilder
             IdentityProtocols = _identityProtocols,
             OtherProtocols = _appLayerProtocols,
         };
-        return new ManagedPeerSwitch(localPeer, new CompositeProtocolRegistry(diRegistry, builderRegistry), ServiceProvider);
+        return new ManagedPeerSwitch(localPeer, new CompositeProtocolRegistry(diRegistry, builderRegistry), ServiceProvider, _managedAdapterFactories);
     }
 }

@@ -41,13 +41,15 @@ public class LocalPeer(Identity identity) : ILocalPeer
 
     public async Task<IRemotePeer> DialAsync(Multiaddress addr, CancellationToken token = default)
     {
-        IRemotePeerConnection connection = await Switch.DialAsync(addr, token);
+        IRemotePeerConnection connection = _switch is ManagedPeerSwitch concrete
+            ? await concrete.DialAsync(this, addr, token)
+            : await Switch.DialAsync(addr, token);
         return connection.RemotePeer;
     }
 
     public Task<IListener> ListenAsync(Multiaddress addr, CancellationToken token = default)
     {
-        GetOrAddAddress(addr);
+        Address = addr;
         return Switch.ListenAsync(this, token);
     }
 
