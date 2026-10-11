@@ -101,7 +101,7 @@ public class ReaderWriterTests
     {
         Channel.ReaderWriter readerWriter = new();
 
-        _ = Task.Run(async () =>
+        Task writer = Task.Run(async () =>
         {
             await readerWriter.WriteAsync(new ReadOnlySequence<byte>([1, 2, 3]));
             await readerWriter.WriteEofAsync();
@@ -109,6 +109,7 @@ public class ReaderWriterTests
 
         Assert.That(await readerWriter.CanReadAsync(), Is.EqualTo(IOResult.Ok));
         ReadOnlySequence<byte> res1 = await readerWriter.ReadAsync(3, ReadBlockingMode.WaitAll).OrThrow();
+        await writer; // EOF must have landed before the closed-channel asserts below
 
         Assert.ThrowsAsync<ChannelClosedException>(async () => await readerWriter.ReadAsync(3, ReadBlockingMode.DontWait).OrThrow());
         Assert.That(await readerWriter.CanReadAsync(), Is.EqualTo(IOResult.Ended));
@@ -139,13 +140,14 @@ public class ReaderWriterTests
     {
         Channel.ReaderWriter readerWriter = new();
 
-        _ = Task.Run(async () =>
+        Task writer = Task.Run(async () =>
         {
             await readerWriter.WriteAsync(new ReadOnlySequence<byte>([1, 2, 3]));
             await readerWriter.WriteEofAsync();
         });
 
         ReadOnlySequence<byte> res1 = await readerWriter.ReadAsync(3, ReadBlockingMode.WaitAll).OrThrow();
+        await writer; // EOF must have landed before the closed-channel asserts below
 
         Assert.That(res1, Has.Length.EqualTo(3));
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using Microsoft.Extensions.DependencyInjection;
+using Multiformats.Address;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Stack;
@@ -82,6 +83,35 @@ public class SwitchEndToEndTests
         // Managed tier: Echo through the adapter.
         IManagedProtocolComm<string> echo = await connection.Managed.DialAsync(EchoProtocol.Ref, cts.Token);
         Assert.That(echo.comm, Is.EqualTo("hello"));
+
+        await connection.DisconnectAsync();
+        await listener.DisconnectAsync();
+    }
+
+    [Test]
+    public async Task DialPeer_DeadAddressFirst_RecordsFailure_ThenSkipsIt()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        IRemotePeer peer = dialerNode.Switch.GetRemotePeer(listenerNode.Peer.Identity);
+        Multiaddress deadAddress = "/ip4/127.0.0.1/tcp/1";
+        peer.GetOrAddAddress(deadAddress);
+
+        // Only the dead address is known: the dial fails and is accounted.
+        Assert.ThrowsAsync<PeerConnectionException>(async () => await dialerNode.Switch.DialAsync(peer, cts.Token));
+        Assert.That(peer.Addresses[deadAddress].FailedDials, Is.EqualTo(1));
+
+        // With a live address added, the dial succeeds — and tries the
+        // live one first (fewest failures), leaving the count at 1.
+        peer.GetOrAddAddress(listener.Address);
+        IRemotePeerConnection connection = await dialerNode.Switch.DialAsync(peer, cts.Token);
+        Assert.That(connection, Is.Not.Null);
+        Assert.That(peer.Addresses[deadAddress].FailedDials, Is.EqualTo(1));
 
         await connection.DisconnectAsync();
         await listener.DisconnectAsync();
