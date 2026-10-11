@@ -3,25 +3,33 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Nethermind.Libp2p.Stack;
-using Nethermind.Libp2p.Core;
 using Multiformats.Address;
-using System.Net.Quic;
+using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Stack;
 
-// Bitswap sample host: the same shape as the chat sample, with the
-// Bitswap 1.1 protocol registered as a managed-tier app protocol.
-// Received wants/blocks are logged; a block-exchange engine would hook
-// BitSwapProtocolChannel's events to a block store.
+// Two-node Bitswap file transfer:
+//
+//   serve <file> [port]                 seed a file and serve it
+//   get <peer-address> <root-id> <out>  download it from that peer
+//
+// Block ids are sha2-256 multihashes of the content; a file is a
+// manifest block over 256 KiB chunk blocks. See Bitswap11Protocol.cs
+// for how that narrows real IPFS (full CIDs, UnixFS) for the sample.
 
-var localIdentity = new Identity();
-var localPeer = new LocalPeer(localIdentity);
-if (QuicListener.IsSupported)
+if (args.Length == 0 || (args[0] != "serve" && args[0] != "get"))
 {
-    localPeer.GetOrAddAddress("/ip4/0.0.0.0/udp/0/quic-v1");
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  serve <file> [port]");
+    Console.WriteLine("  get <peer-address> <root-id-hex> <output-file>");
+    return;
 }
+
+var store = new InMemoryBlockStore();
+var localPeer = new LocalPeer(new Identity());
 localPeer.GetOrAddAddress("/ip4/0.0.0.0/tcp/0");
 
-ServiceProvider serviceProvider = new ServiceCollection()
+ServiceProvider services = new ServiceCollection()
+    .AddSingleton<IBlockStore>(store)
     .AddLibp2pLocalPeer(localPeer)
     .AddLibp2p(builder => builder.AddManagedProtocol(BitSwap11Protocol.Ref))
     .AddLogging(builder =>
@@ -33,29 +41,50 @@ ServiceProvider serviceProvider = new ServiceCollection()
             }))
     .BuildServiceProvider();
 
-ILogger logger = serviceProvider.GetService<ILoggerFactory>()!.CreateLogger("IPFS");
-IManagedPeerSwitch peerSwitch = serviceProvider.GetService<IManagedPeerSwitch>()!;
-
-CancellationTokenSource ts = new();
-
-if (args.Length > 0 && args[0] == "-d")
+ILogger logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("IPFS");
+IManagedPeerSwitch peerSwitch = services.GetRequiredService<IManagedPeerSwitch>();
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
 {
-    Multiaddress remoteAddr = args[1];
+    e.Cancel = true;
+    cts.Cancel();
+};
 
-    logger.LogInformation("Dialing {remote}", remoteAddr);
-    IRemotePeerConnection connection = await peerSwitch.DialAsync(remoteAddr, ts.Token);
+if (args[0] == "serve")
+{
+    string file = args[1];
+    await using FileStream source = File.OpenRead(file);
+    byte[] rootId = await BitswapSession.PutFileAsync(store, source);
+    logger.LogInformation("Seeded {file}: {chunks} block(s)", file, (source.Length + BitswapSession.ChunkSize - 1) / BitswapSession.ChunkSize + 1);
 
-    IManagedProtocolComm<BitSwapProtocolChannel> bitswap = await connection.Managed.DialAsync(BitSwap11Protocol.Ref, ts.Token);
-    bitswap.comm.OnWant += (block, cancel) => logger.LogInformation("Remote wants {block} (cancel: {cancel})", Convert.ToHexString(block), cancel);
-    bitswap.comm.OnBlock += (prefix, data) => logger.LogInformation("Received block, {length} bytes", data.Length);
-    await Task.Delay(Timeout.Infinite, ts.Token);
+    IListener listener = await peerSwitch.ListenAsync(localPeer, cts.Token);
+    logger.LogInformation("Serving at {address}", listener.Address);
+    logger.LogInformation("Root id: {rootId}", Convert.ToHexString(rootId));
+
+    try
+    {
+        await Task.Delay(Timeout.Infinite, cts.Token);
+    }
+    catch (TaskCanceledException)
+    {
+    }
+    await listener.DisconnectAsync();
 }
 else
 {
-    IListener listener = await peerSwitch.ListenAsync(localPeer, ts.Token);
-    logger.LogInformation("Listener started at {address}", listener.Address);
-    listener.OnConnection += async remotePeer => logger.LogInformation("A peer connected {remote}", remotePeer.Address);
-    Console.CancelKeyPress += delegate { listener.DisconnectAsync(); };
+    Multiaddress remoteAddr = args[1];
+    byte[] rootId = BlockIds.FromHex(args[2]);
+    string outputFile = args[3];
 
-    await listener;
+    logger.LogInformation("Dialing {remote}", remoteAddr);
+    IRemotePeerConnection connection = await peerSwitch.DialAsync(remoteAddr, cts.Token);
+
+    IManagedProtocolComm<BitswapSession> bitswap = await connection.Managed.DialAsync(BitSwap11Protocol.Ref, cts.Token);
+    bitswap.comm.OnBlock += (id, data) => logger.LogInformation("Received block {id} ({length} bytes)", Convert.ToHexString(id)[..12], data.Length);
+
+    await using FileStream destination = File.Create(outputFile);
+    await bitswap.comm.GetFileAsync(rootId, destination, cts.Token);
+    logger.LogInformation("Saved {file} ({length} bytes)", outputFile, destination.Length);
+
+    await connection.DisconnectAsync();
 }
