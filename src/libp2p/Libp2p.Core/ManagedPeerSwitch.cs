@@ -213,7 +213,13 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         };
 
         _ = root.ListenAsync(signalingChannel, rootFactory, context)
-            .ContinueWith(task => ready.TrySetException(task.Exception!), TaskContinuationOptions.OnlyOnFaulted);
+            .ContinueWith(task =>
+            {
+                if (task.IsFaulted)
+                {
+                    ready.TrySetException(task.Exception!);
+                }
+            });
         await ready.Task.WaitAsync(token);
         return listener;
     }
@@ -312,7 +318,21 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         };
 
         _ = root.DialAsync(signalingChannel, rootFactory, context)
-            .ContinueWith(task => connected.TrySetException(task.Exception!), TaskContinuationOptions.OnlyOnFaulted);
+            .ContinueWith(task =>
+            {
+                // A stack that ends without reporting Connected has failed
+                // the dial (a refused TCP connect, say — the transport
+                // swallows it and just stops), so fault the wait instead
+                // of hanging until the caller's token fires.
+                if (task.IsFaulted)
+                {
+                    connected.TrySetException(task.Exception!);
+                }
+                else if (!connected.Task.IsCompleted)
+                {
+                    connected.TrySetException(new PeerConnectionException($"The connection to {addr} closed before it was established."));
+                }
+            });
         return await connected.Task.WaitAsync(token);
     }
 }

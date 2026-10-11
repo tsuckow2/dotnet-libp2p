@@ -20,4 +20,11 @@ public interface IManagedPeerSwitch : IPeerFactory
     ///     connection-bound surface (DialAsync/ListenAsync) delegates here.
     /// </summary>
     ILocalPeer Create(Identity? identity = null, Multiaddress? localAddr = null);
+
+    /// <summary>
+    ///     The switch's book entry for a remote identity, created on first
+    ///     use: the peer information (identity + known addresses) that
+    ///     DialAsync(IRemotePeer) dials across.
+    /// </summary>
+    IRemotePeer GetRemotePeer(Identity identity);
 }
