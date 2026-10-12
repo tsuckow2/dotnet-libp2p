@@ -4,6 +4,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <!-- The default stack registers QuicProtocol, which rides on the preview System.Net.Quic surface. -->
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
     <RootNamespace>Nethermind.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
     <AssemblyName>Nethermind.$(MSBuildProjectName)</AssemblyName>
   </PropertyGroup>
@@ -20,7 +22,8 @@
     <ProjectReference Include="..\Libp2p.Protocols.Multistream\Libp2p.Protocols.Multistream.csproj" />
     <ProjectReference Include="..\Libp2p.Protocols.Noise\Libp2p.Protocols.Noise.csproj" />
     <ProjectReference Include="..\Libp2p.Protocols.Plaintext\Libp2p.Protocols.Plaintext.csproj" />
-    <ProjectReference Include="..\Libp2p.Protocols.Quic\Libp2p.Protocols.Quic.csproj" />
+    <ProjectReference Include="..\Libp2p.Transports\IpTcp\Libp2p.Protocols.IpTcp.csproj" />
+    <ProjectReference Include="..\Libp2p.Transports\Quic\Libp2p.Protocols.Quic.csproj" />
     <ProjectReference Include="..\Libp2p.Protocols.Yamux\Libp2p.Protocols.Yamux.csproj" />
   </ItemGroup>
 

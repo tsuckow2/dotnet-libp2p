@@ -24,7 +24,7 @@ namespace Nethermind.Libp2p.Protocols;
 /// https://github.com/libp2p/specs/blob/master/quic/README.md
 /// </summary>
 [RequiresPreviewFeatures]
-public class QuicProtocol : IProtocol
+public class QuicProtocol : IProtocol, ITransport
 {
     private readonly ILogger<QuicProtocol>? _logger;
     private readonly ECDsa _sessionKey;
@@ -183,6 +183,111 @@ public class QuicProtocol : IProtocol
 
     private static bool VerifyRemoteCertificate(IPeer? remotePeer, X509Certificate certificate) =>
          CertificateHelper.ValidateCertificate(certificate as X509Certificate2, remotePeer?.Address.Get<P2P>().ToString());
+
+    // ---- ITransport: the raw comm shape, one stream per comm ------------
+    //
+    // The stack path above binds the QUIC certificate to the peers'
+    // identities. The standalone transport has no peer context, so it
+    // presents an ephemeral identity and accepts any libp2p certificate:
+    // a raw pipe, with identity binding left to the layers above it —
+    // the same contract IpTcpProtocol's ITransport methods offer.
+
+    public async Task<IRemoteComm> DialAsync(Multiaddress address)
+    {
+        if (!QuicConnection.IsSupported)
+        {
+            throw new NotSupportedException("QUIC is not supported, check for presence of libmsquic and support of TLS 1.3.");
+        }
+
+        MultiaddressProtocol protocol = address.Has<IP4>() ? address.Get<IP4>() : address.Get<IP6>();
+        var remoteEndPoint = new IPEndPoint(IPAddress.Parse(protocol.ToString()), address.Get<UDP>().Port);
+
+        QuicConnection connection = await QuicConnection.ConnectAsync(new QuicClientConnectionOptions
+        {
+            DefaultStreamErrorCode = 0,
+            DefaultCloseErrorCode = 1,
+            MaxInboundUnidirectionalStreams = 256,
+            MaxInboundBidirectionalStreams = 256,
+            ClientAuthenticationOptions = new SslClientAuthenticationOptions
+            {
+                TargetHost = null,
+                ApplicationProtocols = protocols,
+                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                ClientCertificates = new X509CertificateCollection { CertificateHelper.CertificateFromIdentity(_sessionKey, new Identity()) },
+            },
+            RemoteEndPoint = remoteEndPoint,
+        });
+
+        QuicStream stream = await connection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        var transportConnection = new GenericRemoteConnection(address, async () =>
+        {
+            await connection.CloseAsync(0);
+            await connection.DisposeAsync();
+        });
+        return new GenericRemoteComm(false, new StreamChannel(stream), transportConnection);
+    }
+
+    public async Task ListenAsync(Multiaddress localAddress, Action<IChannel, Multiaddress> onConnection, CancellationToken token)
+    {
+        if (!QuicListener.IsSupported)
+        {
+            throw new NotSupportedException("QUIC is not supported, check for presence of libmsquic and support of TLS 1.3.");
+        }
+
+        MultiaddressProtocol protocol = localAddress.Has<IP4>() ? localAddress.Get<IP4>() : localAddress.Get<IP6>();
+        var listenEndPoint = new IPEndPoint(IPAddress.Parse(protocol.ToString()), localAddress.Get<UDP>().Port);
+
+        QuicServerConnectionOptions serverConnectionOptions = new()
+        {
+            DefaultStreamErrorCode = 0,
+            DefaultCloseErrorCode = 1,
+            ServerAuthenticationOptions = new SslServerAuthenticationOptions
+            {
+                ApplicationProtocols = protocols,
+                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                ServerCertificate = CertificateHelper.CertificateFromIdentity(_sessionKey, new Identity()),
+            },
+        };
+
+        QuicListener listener = await QuicListener.ListenAsync(new QuicListenerOptions
+        {
+            ListenEndPoint = listenEndPoint,
+            ApplicationProtocols = protocols,
+            ConnectionOptionsCallback = (_, _, _) => ValueTask.FromResult(serverConnectionOptions),
+        }, token);
+
+        await using (listener)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    QuicConnection connection = await listener.AcceptConnectionAsync(token);
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            while (!token.IsCancellationRequested)
+                            {
+                                QuicStream stream = await connection.AcceptInboundStreamAsync(token);
+                                IPEndPoint remote = connection.RemoteEndPoint;
+                                var remoteAddress = new Multiaddress()
+                                    .Add<IP4>(remote.Address.MapToIPv4())
+                                    .Add<UDP>(remote.Port)
+                                    .Add<QUICv1>();
+                                onConnection(new StreamChannel(stream), remoteAddress);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            // The connection closed; its streams are done.
+                        }
+                    }, token);
+                }
+            }
+            catch (OperationCanceledException) { }
+        }
+    }
 
     private async Task ProcessStreams(QuicConnection connection, IPeerContext context, IChannelFactory channelFactory, CancellationToken token = default)
     {

@@ -10,10 +10,11 @@ namespace Nethermind.Libp2p.Stack;
 /// <summary>
 ///     The default stack, registered flat by role — the same protocols the
 ///     old ProtocolStack tree composed with Over/Or:
-///     IpTcp transport, Noise (or Plaintext) security, Yamux muxer,
-///     Multistream selector, Identify, and the pubsub protocols as
-///     app-layer. Quic is not registered yet: it still speaks the
-///     channel-tier transport shape and needs its ITransport port.
+///     IpTcp and Quic transports, Noise (or Plaintext) security, Yamux
+///     muxer, Multistream selector, Identify, and the pubsub protocols
+///     as app-layer. The switch picks the transport by address; Quic
+///     carries its own TLS and stream multiplexing, so above it the
+///     stack is only the selector and the app protocols.
 /// </summary>
 public class Libp2pPeerFactoryBuilder : PeerFactoryBuilderBase<Libp2pPeerFactoryBuilder>,
     ILibp2pPeerFactoryBuilder
@@ -21,6 +22,7 @@ public class Libp2pPeerFactoryBuilder : PeerFactoryBuilderBase<Libp2pPeerFactory
     public Libp2pPeerFactoryBuilder(IServiceProvider? serviceProvider = default) : base(serviceProvider)
     {
         AddTransport<IpTcpProtocol>();
+        AddTransport<QuicProtocol>();
         AddSecurityProtocol<NoiseProtocol>();
         AddMuxerProtocol<YamuxProtocol>();
         AddIdentityProtocol<IdentifyProtocol>();

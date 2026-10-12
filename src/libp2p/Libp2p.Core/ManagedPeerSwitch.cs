@@ -97,19 +97,26 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
             .Setup(apps.ToDictionary(protocol => protocol, _ => (IChannelFactory)emptyFactory));
 
         // Layers above the transport, bottom first; selectors separate the
-        // functional stages.
+        // functional stages. A self-multiplexing transport terminates the
+        // stack itself: QUIC carries TLS and native streams, so it plays
+        // the security and muxer roles too and only the selector and the
+        // app protocols sit above it. (Identified by protocol id, like
+        // the selector — Core cannot reference the Quic project.)
         var layers = new List<IProtocol> { NewSelector() };
-        IProtocol? security = _protocolRegistry.SecurityProtocols.FirstOrDefault();
-        if (security is not null)
+        if (transport.Id != "quic-v1")
         {
-            layers.Add(security);
-            layers.Add(NewSelector());
-        }
-        IProtocol? muxer = _protocolRegistry.MuxerProtocols.FirstOrDefault();
-        if (muxer is not null)
-        {
-            layers.Add(muxer);
-            layers.Add(NewSelector());
+            IProtocol? security = _protocolRegistry.SecurityProtocols.FirstOrDefault();
+            if (security is not null)
+            {
+                layers.Add(security);
+                layers.Add(NewSelector());
+            }
+            IProtocol? muxer = _protocolRegistry.MuxerProtocols.FirstOrDefault();
+            if (muxer is not null)
+            {
+                layers.Add(muxer);
+                layers.Add(NewSelector());
+            }
         }
 
         for (int i = layers.Count - 1; i >= 0; i--)
@@ -128,12 +135,15 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     private IProtocol PickTransport(Multiaddress addr)
     {
-        if (addr.Has<TCP>())
+        // Transports are picked by the address's shape, matched against
+        // the protocol id: /tcp/ is IpTcp's, /udp/ (quic-v1) is Quic's.
+        string? transportId = addr.Has<TCP>() ? "ip-tcp" : addr.Has<UDP>() ? "quic-v1" : null;
+        if (transportId is null)
         {
-            return _protocolRegistry.Transports.OfType<IProtocol>().FirstOrDefault()
-                ?? throw new NotSupportedException("No channel-tier TCP transport is registered.");
+            throw new NotSupportedException($"No transport can serve {addr}: the switch dials and listens on TCP and QUIC addresses.");
         }
-        throw new NotSupportedException($"No transport registered for {addr}: only TCP addresses are supported by the switch for now.");
+        return _protocolRegistry.Transports.OfType<IProtocol>().FirstOrDefault(transport => transport.Id == transportId)
+            ?? throw new NotSupportedException($"No '{transportId}' transport is registered, but {addr} needs one.");
     }
 
     // ---- connection bookkeeping -----------------------------------------
