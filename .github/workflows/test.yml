@@ -21,6 +21,13 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v3
 
+      # System.Net.Quic shells out to the OS libmsquic; without it the
+      # QUIC end-to-end test skips itself.
+      - name: Install libmsquic
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libmsquic
+
       - name: Install dependencies
         working-directory: ${{ env.WORKING_DIR }}
         run: dotnet restore
