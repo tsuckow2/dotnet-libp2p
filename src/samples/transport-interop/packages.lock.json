@@ -57,8 +57,8 @@
       },
       "BouncyCastle.Cryptography": {
         "type": "Transitive",
-        "resolved": "2.2.1",
-        "contentHash": "A6Zr52zVqJKt18ZBsTnX0qhG0kwIQftVAjLmszmkiR/trSp8H+xj1gUOzk7XHwaKgyREMSV1v9XaKrBUeIOdvQ=="
+        "resolved": "2.6.2",
+        "contentHash": "7oWOcvnntmMKNzDLsdxAYqApt+AjpRpP2CShjMfIa3umZ42UQMvH0tl1qAliYPNYO6vTdcGMqnRrCPmsfzTI1w=="
       },
       "Google.Protobuf": {
         "type": "Transitive",
@@ -1198,7 +1198,7 @@
       "Nethermind.Libp2p.Core": {
         "type": "Project",
         "dependencies": {
-          "BouncyCastle.Cryptography": "[2.2.1, )",
+          "BouncyCastle.Cryptography": "[2.6.2, )",
           "Google.Protobuf": "[3.25.1, )",
           "Microsoft.Extensions.DependencyInjection": "[8.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[8.0.0, )",
@@ -1233,7 +1233,7 @@
       "Nethermind.Libp2p.Protocols.Noise": {
         "type": "Project",
         "dependencies": {
-          "BouncyCastle.Cryptography": "[2.2.1, )",
+          "BouncyCastle.Cryptography": "[2.6.2, )",
           "Google.Protobuf": "[3.25.1, )",
           "Multiformats.Hash": "[1.5.0, )",
           "Nethermind.Libp2p.Core": "[1.0.0, )",
