@@ -49,3 +49,4 @@ jobs:
           dotnet test Libp2p.Protocols.Pubsub.Tests ${{ env.TEST_OPTS }}
           dotnet test Libp2p.Protocols.Yamux.Tests ${{ env.TEST_OPTS }}
           dotnet test Libp2p.Transports/Quic.Tests ${{ env.TEST_OPTS }}
+          dotnet test ../ipfs/Ipfs.Kad.Tests ${{ env.TEST_OPTS }}
