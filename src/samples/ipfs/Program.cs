@@ -4,17 +4,17 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Multiformats.Address;
+using Nethermind.Ipfs.Bitswap;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Stack;
 
-// Two-node Bitswap file transfer:
+// Two-node Bitswap file transfer, a consumer of Nethermind.Ipfs.Bitswap:
 //
 //   serve <file> [port]                 seed a file and serve it
 //   get <peer-address> <root-id> <out>  download it from that peer
 //
 // Block ids are sha2-256 multihashes of the content; a file is a
-// manifest block over 256 KiB chunk blocks. See Bitswap11Protocol.cs
-// for how that narrows real IPFS (full CIDs, UnixFS) for the sample.
+// manifest block over 256 KiB chunk blocks (BitswapSession.PutFileAsync).
 
 if (args.Length == 0 || (args[0] != "serve" && args[0] != "get"))
 {
