@@ -18,6 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\ipfs\Ipfs.Bitswap\Ipfs.Bitswap.csproj" />
+    <ProjectReference Include="..\..\ipfs\Ipfs.Kad\Ipfs.Kad.csproj" />
     <ProjectReference Include="..\..\libp2p\Libp2p.Protocols.Identify\Libp2p.Protocols.Identify.csproj" />
     <ProjectReference Include="..\..\libp2p\Libp2p.Transports\IpTcp\Libp2p.Protocols.IpTcp.csproj" />
     <ProjectReference Include="..\..\libp2p\Libp2p.Protocols.Multistream\Libp2p.Protocols.Multistream.csproj" />
