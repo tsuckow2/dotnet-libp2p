@@ -71,11 +71,23 @@ public class KadClient
         return isNew;
     }
 
-    /// <summary>Seeds the book with the public bootstrap peers (<see cref="KadDht.BootstrapPeers"/>).</summary>
+    /// <summary>
+    ///     Seeds the book with the public bootstrap peers
+    ///     (<see cref="KadDht.BootstrapPeers"/>). Entries this node
+    ///     cannot use yet — /dnsaddr/ addresses, which need DNS TXT
+    ///     resolution — are skipped, never fatal: a bootstrap list is
+    ///     a starting point, not a contract.
+    /// </summary>
     public void SeedBootstrapPeers()
     {
-        foreach (Multiaddress addr in KadDht.BootstrapPeers)
+        foreach (string bootstrap in KadDht.BootstrapPeerAddresses)
         {
+            if (bootstrap.Contains("/dnsaddr/"))
+            {
+                continue;
+            }
+
+            Multiaddress addr = bootstrap;
             string? peerId = addr.Get<P2P>()?.ToString();
             if (peerId is null)
             {

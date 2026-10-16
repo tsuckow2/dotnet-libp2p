@@ -15,12 +15,15 @@ public static class KadDht
     public const string ProtocolId = "/ipfs/kad-dht/1.0.0";
 
     /// <summary>
-    ///     The well-known bootstrap peers of the public network (the
-    ///     same set kubo ships as its defaults): DNS-addressed
-    ///     bootstrappers first, then the planet-named IPFS Foundation
-    ///     nodes by IPv4.
+    ///     The well-known bootstrap peers of the public network, as
+    ///     address strings (the same set kubo ships as its defaults):
+    ///     DNS-addressed bootstrappers first, then the planet-named
+    ///     IPFS Foundation nodes by IPv4. Kept as strings because not
+    ///     every entry is representable as a Multiaddress yet —
+    ///     /dnsaddr/ needs DNS TXT resolution before it denotes an
+    ///     endpoint at all.
     /// </summary>
-    public static IReadOnlyList<Multiaddress> BootstrapPeers =>
+    public static IReadOnlyList<string> BootstrapPeerAddresses =>
     [
         "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
         "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
@@ -32,4 +35,11 @@ public static class KadDht
         "/ip4/104.236.76.40/tcp/4001/p2p/QmSoLV4Bbm51jM9C4gDYZQ9Cy3U6aXMJDAbzgu2fzaDs64",
         "/ip4/178.62.158.247/tcp/4001/p2p/QmSoLer265NRgSp2LA3dPaeykiS1J6DifTC88f5uVQKNAd",
     ];
+
+    /// <summary>The bootstrap peers that parse as multiaddresses (all but the /dnsaddr/ set).</summary>
+    public static IReadOnlyList<Multiaddress> BootstrapPeers =>
+        BootstrapPeerAddresses
+            .Where(addr => !addr.Contains("/dnsaddr/"))
+            .Select(addr => (Multiaddress)addr)
+            .ToList();
 }
