@@ -7,13 +7,11 @@ using Multiformats.Address;
 namespace Nethermind.Libp2p.Core;
 
 /// <summary>
-///     The local peer: its addresses are the listen set for the switch.
-///     The switch attaches itself on construction so the peer's
-///     connection-bound surface can delegate to it.
+///     The local peer: identity and address book. Its addresses are the
+///     listen set for the switch; the switch does the listening.
 /// </summary>
 public class LocalPeer(Identity identity) : ILocalPeer
 {
-    private IManagedPeerSwitch? _switch;
     private Multiaddress? _address;
 
     public Identity Identity { get; set; } = identity;
@@ -33,26 +31,4 @@ public class LocalPeer(Identity identity) : ILocalPeer
     {
         return Addresses.GetOrAdd(address, _ => new PeerAddressAccounting());
     }
-
-    internal void AttachSwitch(IManagedPeerSwitch peerSwitch)
-    {
-        _switch = peerSwitch;
-    }
-
-    public async Task<IRemotePeer> DialAsync(Multiaddress addr, CancellationToken token = default)
-    {
-        IRemotePeerConnection connection = _switch is ManagedPeerSwitch concrete
-            ? await concrete.DialAsync(this, addr, token)
-            : await Switch.DialAsync(addr, token);
-        return connection.RemotePeer;
-    }
-
-    public Task<IListener> ListenAsync(Multiaddress addr, CancellationToken token = default)
-    {
-        Address = addr;
-        return Switch.ListenAsync(this, token);
-    }
-
-    private IManagedPeerSwitch Switch => _switch
-        ?? throw new InvalidOperationException("This local peer is not attached to a switch. Build it through a peer factory builder (AddLibp2p) so the switch can attach.");
 }

@@ -43,11 +43,6 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         _managedAdapters = (managedAdapterFactories ?? [])
             .Select(factory => factory(_connectionRegistry))
             .ToList();
-
-        if (localPeer is LocalPeer concrete)
-        {
-            concrete.AttachSwitch(this);
-        }
     }
 
     public ILocalPeer Create(Identity? identity = default, Multiaddress? localAddr = default)
@@ -57,7 +52,6 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         {
             peer.GetOrAddAddress(localAddr);
         }
-        peer.AttachSwitch(this);
         return peer;
     }
 
@@ -168,10 +162,6 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
             _serviceProvider, _connectionRegistry, context, managedAdapters: _managedAdapters);
         _connectionRegistry.Register(context.ConnectionId, connection);
         _remotePeers[remotePeer.Identity] = remotePeer;
-        if (remotePeer is RemotePeer concretePeer)
-        {
-            concretePeer.AttachConnection(connection);
-        }
         return connection;
     }
 

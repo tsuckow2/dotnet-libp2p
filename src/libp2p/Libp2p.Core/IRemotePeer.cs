@@ -4,14 +4,11 @@
 namespace Nethermind.Libp2p.Core;
 
 /// <summary>
-///     A remote peer as information, plus the connection-bound surface the
-///     channel-tier consumers use once the switch has connected it:
-///     dialing a protocol over the live connection and disconnecting.
-///     Managed-tier dialing goes through the connection's
-///     <see cref="IManagedPeer"/> instead.
+///     A remote peer as information: an identity and an address book.
+///     Acting on a live connection — dialing protocols over it, closing
+///     it — goes through the connection object
+///     (<see cref="IRemotePeerConnection"/>), not the peer.
 /// </summary>
 public interface IRemotePeer : IPeer
 {
-    Task DialAsync<TProtocol>(CancellationToken token = default) where TProtocol : IProtocol;
-    Task DisconnectAsync();
 }
