@@ -22,19 +22,23 @@ public class FloodsubProtocolTests
 
         ILocalPeer peer = Substitute.For<ILocalPeer>();
         peer.Address.Returns(localPeerAddr);
-        peer.DialAsync(discoveredPeer, Arg.Any<CancellationToken>()).Returns(new TestRemotePeer(discoveredPeer));
+
+        IManagedPeerSwitch peerSwitch = Substitute.For<IManagedPeerSwitch>();
+        peerSwitch.LocalPeer.Returns(peer);
+        peerSwitch.DialAsync(discoveredPeer, Arg.Any<CancellationToken>())
+            .Returns(new TestRemotePeerConnection(new TestRemotePeer(discoveredPeer)));
 
         TestDiscoveryProtocol discovery = new();
         CancellationToken token = default;
         List<Rpc> sentRpcs = new();
 
-        _ = router.RunAsync(peer, discovery, token: token);
+        _ = router.RunAsync(peerSwitch, discovery, token: token);
         router.Subscribe(commonTopic);
         Assert.That(state.FloodsubPeers.Keys, Has.Member(commonTopic));
 
         discovery.OnAddPeer!(new[] { discoveredPeer });
         await Task.Delay(100);
-        _ = peer.Received().DialAsync(discoveredPeer, Arg.Any<CancellationToken>());
+        _ = peerSwitch.Received().DialAsync(discoveredPeer, Arg.Any<CancellationToken>());
 
         router.OutboundConnection(peerId, PubsubRouter.FloodsubProtocolVersion, sentRpcs.Add);
         router.InboundConnection(peerId, PubsubRouter.FloodsubProtocolVersion, () => { });

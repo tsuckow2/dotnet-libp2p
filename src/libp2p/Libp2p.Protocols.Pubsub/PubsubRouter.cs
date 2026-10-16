@@ -81,6 +81,7 @@ public class PubsubRouter : IRoutingStateContainer
     private TtlCache<MessageId, Message> messageCache;
     private TtlCache<MessageId, Message> limboMessageCache;
     private ILocalPeer? localPeer;
+    private IManagedPeerSwitch? peerSwitch;
     private ILogger? logger;
 
     private readonly ConcurrentDictionary<string, HashSet<PeerId>> fPeers = new();
@@ -105,7 +106,7 @@ public class PubsubRouter : IRoutingStateContainer
         logger = loggerFactory?.CreateLogger<PubsubRouter>();
     }
 
-    public async Task RunAsync(ILocalPeer localPeer, IDiscoveryProtocol discoveryProtocol, Settings? settings = null, CancellationToken token = default)
+    public async Task RunAsync(IManagedPeerSwitch peerSwitch, IDiscoveryProtocol discoveryProtocol, Settings? settings = null, CancellationToken token = default)
     {
         this.settings = settings ?? Settings.Default;
         messageCache = new(this.settings.MessageCacheTtl);
@@ -114,10 +115,11 @@ public class PubsubRouter : IRoutingStateContainer
         {
             throw new InvalidOperationException("Router has been already started");
         }
-        this.localPeer = localPeer;
+        this.peerSwitch = peerSwitch;
+        this.localPeer = peerSwitch.LocalPeer;
         LocalPeerId = new PeerId(localPeer.Address.Get<P2P>().ToString()!);
 
-        _ = localPeer.ListenAsync(localPeer.Address, token);
+        _ = peerSwitch.ListenAsync(localPeer, token);
         _ = StartDiscoveryAsync(discoveryProtocol, token);
         logger?.LogInformation("Started");
 
@@ -128,14 +130,13 @@ public class PubsubRouter : IRoutingStateContainer
 
     private async Task StartDiscoveryAsync(IDiscoveryProtocol discoveryProtocol, CancellationToken token = default)
     {
-        if (localPeer is null)
+        if (localPeer is null || peerSwitch is null)
         {
             throw new ArgumentNullException(nameof(localPeer));
         }
         ObservableCollection<Multiaddress> col = new();
         discoveryProtocol.OnAddPeer = (addrs) =>
         {
-            //addrs = addrs.Where(x => x.ToString().Contains("127.0.0.1")).ToArray();
             Dictionary<Multiaddress, CancellationTokenSource> cancellations = new();
             foreach (Multiaddress addr in addrs)
             {
@@ -144,8 +145,11 @@ public class PubsubRouter : IRoutingStateContainer
 
             _ = Task.Run(async () =>
             {
-                IRemotePeer firstConnected = (await Task.WhenAny(addrs
-                    .Select(addr => localPeer.DialAsync(addr, cancellations[addr].Token)))).Result;
+                // Race the addresses; the winner's connection is the one
+                // the gossipsub protocol gets dialed over, and the peer
+                // id comes from the winning (dialed) address.
+                (Multiaddress Address, IRemotePeerConnection Connection) firstConnected = (await Task.WhenAny(addrs
+                    .Select(async addr => (addr, await peerSwitch.DialAsync(addr, cancellations[addr].Token))))).Result;
                 foreach (KeyValuePair<Multiaddress, CancellationTokenSource> c in cancellations)
                 {
                     if (c.Key != firstConnected.Address)
@@ -157,7 +161,7 @@ public class PubsubRouter : IRoutingStateContainer
                 PeerId peerId = firstConnected.Address.Get<P2P>().ToString()!;
                 if (!peerState.ContainsKey(peerId))
                 {
-                    await firstConnected.DialAsync<GossipsubProtocol>(token);
+                    await firstConnected.Connection.DialAsync<GossipsubProtocol>(token);
                 }
             });
             return true;

@@ -43,7 +43,7 @@ topic.OnMessage += (byte[] msg) =>
     }
 };
 
-_ = router.RunAsync(peer, new MDnsDiscoveryProtocol(serviceProvider.GetService<ILoggerFactory>()), token: ts.Token);
+_ = router.RunAsync(peerSwitch, new MDnsDiscoveryProtocol(serviceProvider.GetService<ILoggerFactory>()), token: ts.Token);
 
 
 

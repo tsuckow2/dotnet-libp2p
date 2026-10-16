@@ -20,11 +20,17 @@ public class GossipsubProtocolTests
         const string commonTopic = "topic1";
 
         ILocalPeer peer = new TestLocalPeer();
+
+        IManagedPeerSwitch peerSwitch = Substitute.For<IManagedPeerSwitch>();
+        peerSwitch.LocalPeer.Returns(peer);
+        peerSwitch.DialAsync(Arg.Any<Multiaddress>(), Arg.Any<CancellationToken>())
+            .Returns(call => new TestRemotePeerConnection(new TestRemotePeer(call.Arg<Multiaddress>())));
+
         TestDiscoveryProtocol discovery = new();
         CancellationToken token = default;
         List<Rpc> sentRpcs = new();
 
-        _ = router.RunAsync(peer, discovery, token: token);
+        _ = router.RunAsync(peerSwitch, discovery, token: token);
         router.Subscribe(commonTopic);
         Assert.That(state.FloodsubPeers.Keys, Has.Member(commonTopic));
         Assert.That(state.GossipsubPeers.Keys, Has.Member(commonTopic));

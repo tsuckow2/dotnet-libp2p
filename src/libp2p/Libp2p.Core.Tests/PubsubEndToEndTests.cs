@@ -14,12 +14,11 @@ namespace Nethermind.Libp2p.Core.Tests;
 
 /// <summary>
 ///     Pubsub over the switch: two nodes, each running a PubsubRouter on
-///     the bridged peer surface (LocalPeer.ListenAsync/DialAsync,
-///     RemotePeer.DialAsync for the gossipsub dial). The publisher's
-///     router discovers the subscriber through a static discovery
-///     double, dials it through the switch, and a published message
-///     must arrive at the subscriber's topic. This is the acceptance
-///     test for the bridge the router still stands on.
+///     the switch's native surface (IManagedPeerSwitch.ListenAsync and
+///     DialAsync, and the connection's own DialAsync for the gossipsub
+///     dial). The publisher's router discovers the subscriber through a
+///     static discovery double, dials it through the switch, and a
+///     published message must arrive at the subscriber's topic.
 /// </summary>
 [TestFixture]
 [NonParallelizable]
@@ -74,15 +73,15 @@ public class PubsubEndToEndTests
         subscriberTopic.OnMessage += msg => received.TrySetResult(msg);
         ITopic publisherTopic = publisher.Router.Subscribe("test-topic");
 
-        _ = subscriber.Router.RunAsync(subscriber.Peer, new StaticDiscovery(null), settings, cts.Token);
+        _ = subscriber.Router.RunAsync(subscriber.Switch, new StaticDiscovery(null), settings, cts.Token);
 
-        // The router listens through the bridge; wait for the bound port.
+        // The router listens through the switch; wait for the bound port.
         while (subscriber.Peer.Address.Get<TCP>().Port == 0)
         {
             await Task.Delay(50, cts.Token);
         }
 
-        _ = publisher.Router.RunAsync(publisher.Peer, new StaticDiscovery(subscriber.Peer.Address), settings, cts.Token);
+        _ = publisher.Router.RunAsync(publisher.Switch, new StaticDiscovery(subscriber.Peer.Address), settings, cts.Token);
 
         // Pubsub gives no signal for "the mesh has grafted", and a
         // message published before grafting is simply not forwarded —
