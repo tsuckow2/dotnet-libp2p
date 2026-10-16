@@ -146,7 +146,18 @@ public class KadClient
             try
             {
                 IRemotePeerConnection connection = await PeerSwitch.DialAsync(addr, token);
-                if (!connection.RemotePeer.Identity.PeerId.Bytes.SequenceEqual(peer.Id))
+                // Who answered can only be checked when the peer id
+                // embeds the public key (identity-hash ids): the
+                // switch seeds the connection's identity from the
+                // address for those. For hashed ids (e.g. RSA) the
+                // stack cannot recover the key from the id, and
+                // Identify publishes it on a forked context the
+                // connection never sees — so the dial is taken on
+                // trust, like the rest of the stack takes it. DHT
+                // answers are hints either way; content verifies by
+                // hash at the Bitswap layer.
+                if (PeerId.ExtractPublicKey(peer.Id) is not null
+                    && !connection.RemotePeer.Identity.PeerId.Bytes.SequenceEqual(peer.Id))
                 {
                     await connection.DisconnectAsync();
                     throw new PeerConnectionException(
