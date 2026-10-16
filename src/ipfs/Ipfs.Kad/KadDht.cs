@@ -12,7 +12,15 @@ namespace Nethermind.Ipfs.Kad;
 /// </summary>
 public static class KadDht
 {
-    public const string ProtocolId = "/ipfs/kad-dht/1.0.0";
+    /// <summary>
+    ///     The DHT's protocol id on the public network today. It was
+    ///     renamed from /ipfs/kad-dht/1.0.0 (still the id in the spec
+    ///     and on older nodes); kubo 0.32 advertises only this one.
+    /// </summary>
+    public const string ProtocolId = "/ipfs/kad/1.0.0";
+
+    /// <summary>The protocol's pre-rename id, spoken by older nodes.</summary>
+    public const string LegacyProtocolId = "/ipfs/kad-dht/1.0.0";
 
     /// <summary>
     ///     The well-known bootstrap peers of the public network, as
