@@ -252,7 +252,28 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     public Task<IRemotePeerConnection> DialAsync(Multiaddress addr, CancellationToken token = default)
     {
-        return DialAsync(_localPeer, addr, new RemotePeer(new Identity()), token);
+        return DialAsync(_localPeer, addr, RemotePeerForAddress(addr), token);
+    }
+
+    /// <summary>
+    ///     The remote peer for an address being dialed: when the
+    ///     address carries a /p2p/ part whose peer id embeds the public
+    ///     key (identity-hash ids, e.g. Ed25519), the peer starts with
+    ///     that identity — a dial must know who it expects to reach.
+    ///     For hashed peer ids the key cannot be recovered from the
+    ///     id, and for addresses without a /p2p/ part the peer starts
+    ///     anonymous; in both cases Identify fills the identity in
+    ///     during the handshake.
+    /// </summary>
+    private static RemotePeer RemotePeerForAddress(Multiaddress addr)
+    {
+        if (addr.Get<P2P>()?.ToString() is string peerId
+            && PeerId.ExtractPublicKey(new PeerId(peerId).Bytes) is { } publicKey)
+        {
+            return new RemotePeer(new Identity(publicKey));
+        }
+
+        return new RemotePeer(new Identity());
     }
 
     public async Task<IRemotePeerConnection> DialAsync(IRemotePeer peer, CancellationToken token = default)
@@ -288,7 +309,7 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     internal Task<IRemotePeerConnection> DialAsync(ILocalPeer fromPeer, Multiaddress addr, CancellationToken token = default)
     {
-        return DialAsync(fromPeer, addr, new RemotePeer(new Identity()), token);
+        return DialAsync(fromPeer, addr, RemotePeerForAddress(addr), token);
     }
 
     internal async Task<IRemotePeerConnection> DialAsync(ILocalPeer fromPeer, Multiaddress addr, IRemotePeer remotePeer, CancellationToken token = default)
