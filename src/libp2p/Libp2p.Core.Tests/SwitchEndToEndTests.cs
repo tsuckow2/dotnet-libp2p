@@ -78,7 +78,7 @@ public class SwitchEndToEndTests
         Assert.That(connection, Is.Not.Null);
 
         // Channel tier: Ping over the connection's stack.
-        await connection.RemotePeer.DialAsync<PingProtocol>(cts.Token);
+        await connection.DialAsync<PingProtocol>(cts.Token);
 
         // Managed tier: Echo through the adapter.
         IManagedProtocolComm<string> echo = await connection.Managed.DialAsync(EchoProtocol.Ref, cts.Token);

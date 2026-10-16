@@ -30,12 +30,8 @@ internal class RemotePeerConnection : IRemotePeerConnection
     private readonly Func<Task> _disconnect;
     private readonly IServiceProvider _serviceProvider;
 
-    /// <summary>
-    ///     Dials a channel-tier protocol over this connection: the request
-    ///     joins the context's sub-dial queue, the muxer opens a stream for
-    ///     it, and the task completes when the protocol's channel closes.
-    /// </summary>
-    internal Task DialChannelProtocolAsync<TProtocol>(CancellationToken token) where TProtocol : IProtocol
+    /// <inheritdoc />
+    public Task DialAsync<TProtocol>(CancellationToken token = default) where TProtocol : IProtocol
     {
         if (Context is not PeerContext context)
         {

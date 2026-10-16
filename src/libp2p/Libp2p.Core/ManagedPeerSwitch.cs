@@ -22,6 +22,8 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     public IProtocolRegistry ProtocolRegistry => _protocolRegistry;
 
+    public ILocalPeer LocalPeer => _localPeer;
+
     public ConcurrentDictionary<Identity, IRemotePeer> RemotePeers => _remotePeers;
 
     public ManagedPeerSwitch(ILocalPeer localPeer, IProtocolRegistry protocolRegistry, IServiceProvider serviceProvider)

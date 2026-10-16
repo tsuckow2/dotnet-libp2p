@@ -40,4 +40,12 @@ public interface IRemotePeerConnection
     IChannelMultiplexer? Mux { get; }
     ITransportConnection TransportConnection { get; }
     Task DisconnectAsync();
+
+    /// <summary>
+    ///     Dial a channel-tier protocol over this connection: the muxer
+    ///     opens a stream for it, and the task completes when the
+    ///     protocol's channel closes. Managed-tier protocols are dialed
+    ///     through <see cref="Managed"/> instead.
+    /// </summary>
+    Task DialAsync<TProtocol>(CancellationToken token = default) where TProtocol : IProtocol;
 }

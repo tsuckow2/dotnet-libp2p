@@ -13,6 +13,11 @@ namespace Nethermind.Libp2p.Core;
 /// </summary>
 public interface IManagedPeerSwitch : IPeerFactory
 {
+    /// <summary>
+    ///     The local peer this switch owns connections for.
+    /// </summary>
+    ILocalPeer LocalPeer { get; }
+
     Task<IListener> ListenAsync(ILocalPeer localPeer, CancellationToken token = default);
 
     /// <summary>
