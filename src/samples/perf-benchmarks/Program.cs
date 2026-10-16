@@ -28,19 +28,19 @@ await Task.Delay(1000);
 
     IManagedPeerSwitch peerSwitch = serviceProvider.GetService<IManagedPeerSwitch>()!;
 
-    IListener listener = await localPeer.ListenAsync($"/ip4/0.0.0.0/tcp/0/p2p/{localPeer.Identity.PeerId}");
+    localPeer.Address = $"/ip4/0.0.0.0/tcp/0/p2p/{localPeer.Identity.PeerId}";
+    IListener listener = await peerSwitch.ListenAsync(localPeer);
 
     Multiaddress remoteAddr = listener.Address;
-    ILocalPeer dialer = peerSwitch.Create();
-    IRemotePeer remotePeer = await dialer.DialAsync(remoteAddr);
+    IRemotePeerConnection connection = await peerSwitch.DialAsync(remoteAddr, default);
 
     Stopwatch timeSpent = Stopwatch.StartNew();
-    await remotePeer.DialAsync<PerfProtocol>();
+    await connection.DialAsync<PerfProtocol>();
     TimeSpan elapsed = timeSpent.Elapsed;
     Console.WriteLine("Libp2p");
     Console.WriteLine("Elapsed {0}", timeSpent.Elapsed);
     Console.WriteLine("Speed {0:0.00} MiB/s", PerfProtocol.TotalLoad / timeSpent.Elapsed.TotalMilliseconds * 1000 / 1024 / 1024);
-    await remotePeer.DisconnectAsync();
+    await connection.DisconnectAsync();
 }
 await Task.Delay(1000);
 
@@ -50,17 +50,17 @@ await Task.Delay(1000);
         .Build();
 
     ILocalPeer peer = peerSwitch.Create();
-    IListener listener = await peer.ListenAsync($"/ip4/0.0.0.0/tcp/0");
+    peer.Address = "/ip4/0.0.0.0/tcp/0";
+    IListener listener = await peerSwitch.ListenAsync(peer);
 
     Multiaddress remoteAddr = listener.Address;
-    ILocalPeer dialer = peerSwitch.Create();
-    IRemotePeer remotePeer = await dialer.DialAsync(remoteAddr);
+    IRemotePeerConnection connection = await peerSwitch.DialAsync(remoteAddr, default);
 
     Stopwatch timeSpent = Stopwatch.StartNew();
-    await remotePeer.DialAsync<PerfProtocol>();
+    await connection.DialAsync<PerfProtocol>();
     TimeSpan elapsed = timeSpent.Elapsed;
     Console.WriteLine("NoStack");
     Console.WriteLine("Elapsed {0}", timeSpent.Elapsed);
     Console.WriteLine("Speed {0:0.00} MiB/s", PerfProtocol.TotalLoad / timeSpent.Elapsed.TotalMilliseconds * 1000 / 1024 / 1024);
-    await remotePeer.DisconnectAsync();
+    await connection.DisconnectAsync();
 }
