@@ -210,5 +210,4 @@ class Fetcher(IManagedPeerSwitch peerSwitch, KadClient kad, ILogger logger)
         return !text.Contains("/ip4/10.") && !text.Contains("/ip4/192.168.") &&
                !text.Contains("/ip4/127.") && !System.Text.RegularExpressions.Regex.IsMatch(text, @"/ip4/172\.(1[6-9]|2\d|3[01])\.");
     }
-    }
 }
