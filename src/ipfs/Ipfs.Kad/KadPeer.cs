@@ -38,8 +38,9 @@ public sealed record KadPeer(byte[] Id, IReadOnlyList<Multiaddress> Addresses)
     internal static KadPeer FromWire(Peer peer)
     {
         // An address this node cannot parse (a protocol outside the
-        // wire table) is skipped, not fatal: the peer may still be
-        // reachable at its other addresses.
+        // wire table, or one the address library itself rejects —
+        // it has no dnsaddr) is skipped, not fatal: the peer may
+        // still be reachable at its other addresses.
         var addresses = new List<Multiaddress>();
         foreach (byte[] bytes in peer.addrs ?? [])
         {
@@ -47,7 +48,7 @@ public sealed record KadPeer(byte[] Id, IReadOnlyList<Multiaddress> Addresses)
             {
                 addresses.Add(MultiaddressWire.Decode(bytes));
             }
-            catch (FormatException)
+            catch (Exception e) when (e is FormatException or NotSupportedException)
             {
             }
         }
