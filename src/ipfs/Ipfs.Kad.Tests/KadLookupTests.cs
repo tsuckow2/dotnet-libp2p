@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
+using Nethermind.Libp2p.Core.Extensions;
 using Nethermind.Libp2p.Stack;
 
 namespace Nethermind.Ipfs.Kad.Tests;
@@ -39,19 +40,29 @@ public class KadLookupTests
         public KadPeer AsKadPeer => new(Peer.Identity.PeerId.Bytes, [Listener.Address]);
     }
 
-    private static async Task<Node> BuildNodeAsync(KeyType keyType = KeyType.Ed25519)
+    private static async Task<Node> BuildNodeAsync(KeyType keyType = KeyType.Ed25519, string? bootstrap = null)
     {
         var localPeer = new LocalPeer(new Identity(keyType: keyType));
         localPeer.GetOrAddAddress("/ip4/127.0.0.1/tcp/0");
         var table = new StaticTable();
 
-        ServiceProvider services = new ServiceCollection()
+        var collection = new ServiceCollection()
             .AddLibp2pLocalPeer(localPeer)
             .AddLibp2p(builder => builder.AddAppLayerProtocol<KadDhtProtocol>())
-            .AddSingleton<KadClient>()
             .AddSingleton<IKadPeerTable>(table)
-            .AddLogging()
-            .BuildServiceProvider();
+            .AddLogging();
+        // With a bootstrap entry the node registers the client the
+        // wired-up way (AddKadDht); without, bare — unseeded until
+        // told otherwise, as the other tests rely on.
+        if (bootstrap is null)
+        {
+            collection.AddSingleton<KadClient>();
+        }
+        else
+        {
+            collection.AddKadDht(options => options.BootstrapPeers = [bootstrap]);
+        }
+        ServiceProvider services = collection.BuildServiceProvider();
 
         IManagedPeerSwitch peerSwitch = services.GetRequiredService<IManagedPeerSwitch>();
         IListener listener = await peerSwitch.ListenAsync(localPeer);
@@ -60,6 +71,41 @@ public class KadLookupTests
     }
 
     private static readonly byte[] Key = SHA256.HashData("a block nobody has"u8.ToArray());
+
+    [Test]
+    public async Task Startup_SeedsTheConfiguredBootstrapPeers()
+    {
+        Node provider = await BuildNodeAsync();
+        string bootstrap = provider.AsKadPeer.DialAddresses.First().ToString();
+        Node client = await BuildNodeAsync(bootstrap: bootstrap);
+
+        Assert.That(client.Client.KnownPeers, Is.Empty,
+            "registration alone must not seed — the startup pass does");
+
+        await client.Services.StartLibp2pAsync();
+
+        Assert.That(client.Client.KnownPeers.Select(peer => peer.Id),
+            Does.Contain(provider.Peer.Identity.PeerId.Bytes));
+    }
+
+    [Test]
+    public async Task FirstLookup_SeedsLazily_WhenNoStartupPassRan()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        Node provider = await BuildNodeAsync();
+        string bootstrap = provider.AsKadPeer.DialAddresses.First().ToString();
+        Node client = await BuildNodeAsync(bootstrap: bootstrap);
+
+        provider.Table.Providers = _ => [provider.AsKadPeer];
+
+        // No StartLibp2pAsync, no AddPeer: the lookup itself must
+        // begin (and await) the configured seed, or it walks an
+        // empty book and finds nothing.
+        IReadOnlyList<KadPeer> found = await client.Client.FindProvidersAsync(Key, cts.Token);
+
+        Assert.That(found, Has.Count.EqualTo(1));
+        Assert.That(found[0].Id, Is.EqualTo(provider.Peer.Identity.PeerId.Bytes));
+    }
 
     [Test]
     public async Task FindProviders_DirectAnswer()

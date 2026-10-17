@@ -31,7 +31,7 @@ internal sealed class KadJob(Message request)
 ///     Distances are XOR over SHA-256 hashes of the target and of
 ///     peer ids — the Amino keyspace.
 /// </summary>
-public class KadClient
+public class KadClient : ILibp2pStartup
 {
     public const int WalkWidth = 20;   // k: how many closest peers a walk tracks
     public const int Alpha = 3;        // queries in flight per round
@@ -43,16 +43,55 @@ public class KadClient
 
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger? _logger;
+    private readonly KadDhtOptions? _options;
+    private readonly object _seedGate = new();
+    private Task? _seedTask;
     private IManagedPeerSwitch? _peerSwitch;
 
     private readonly ConcurrentDictionary<string, KadPeer> _peers = new();
     private readonly ConcurrentDictionary<string, IRemotePeerConnection> _connections = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<KadJob>> _jobs = new();
 
-    public KadClient(IServiceProvider serviceProvider, ILoggerFactory? loggerFactory = null)
+    public KadClient(IServiceProvider serviceProvider, ILoggerFactory? loggerFactory = null, KadDhtOptions? options = null)
     {
         _serviceProvider = serviceProvider;
         _logger = loggerFactory?.CreateLogger<KadClient>();
+        _options = options;
+    }
+
+    /// <summary>
+    ///     Startup: begins the configured bootstrap seed (see
+    ///     <see cref="KadDhtOptions.BootstrapPeers"/>) and returns —
+    ///     the seed finishes in the background and every lookup
+    ///     awaits it, so a walk can never race ahead of an
+    ///     in-flight seed and find an empty book. Without options
+    ///     (a directly-registered client) there is nothing to do:
+    ///     the client stays unseeded until told otherwise.
+    /// </summary>
+    public Task StartAsync(CancellationToken token = default)
+    {
+        BeginSeed();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     The one seed task, begun exactly once — by StartAsync,
+    ///     or lazily by the first lookup when no startup pass ran.
+    ///     It runs uncancelled by its callers: begun once and
+    ///     fail-soft per entry, it is cheaper to let it finish
+    ///     than to let one caller's cancellation starve every
+    ///     later lookup.
+    /// </summary>
+    private Task BeginSeed()
+    {
+        if (_options?.BootstrapPeers is not { } bootstrap)
+        {
+            return Task.CompletedTask;
+        }
+        lock (_seedGate)
+        {
+            return _seedTask ??= SeedSetAsync(bootstrap, CancellationToken.None);
+        }
     }
 
     private IManagedPeerSwitch PeerSwitch =>
@@ -95,13 +134,32 @@ public class KadClient
     ///     bootstrappers have mostly retired, and leaning on the one
     ///     survivor makes every walk hostage to a single busy node.
     /// </summary>
-    public async Task SeedBootstrapPeersAsync(CancellationToken token = default)
+    public Task SeedBootstrapPeersAsync(CancellationToken token = default)
     {
-        foreach (string bootstrap in KadDht.BootstrapPeerAddresses)
+        return SeedSetAsync(KadDht.BootstrapPeerAddresses, token);
+    }
+
+    /// <summary>
+    ///     Seeds the book from a set of address strings, expanding
+    ///     /dnsaddr/ entries over DNS TXT first. Fail-soft per
+    ///     entry: a bootstrap that cannot be resolved or parsed
+    ///     is skipped, never fatal — a partial book is still a
+    ///     book, and the public set has dead entries by design.
+    /// </summary>
+    private async Task SeedSetAsync(IReadOnlyList<string> bootstrap, CancellationToken token)
+    {
+        foreach (string entry in bootstrap)
         {
-            foreach (string expanded in await DnsAddr.ExpandAsync(bootstrap, token))
+            try
             {
-                Seed(expanded);
+                foreach (string expanded in await DnsAddr.ExpandAsync(entry, token))
+                {
+                    Seed(expanded);
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                _logger?.LogDebug("Bootstrap entry {entry} did not seed: {error}", entry, e.Message);
             }
         }
     }
@@ -225,6 +283,12 @@ public class KadClient
 
     private async Task<LookupOutcome> LookupAsync(MessageType type, byte[] key, CancellationToken token)
     {
+        // First use awaits the startup seed (begun by StartAsync,
+        // or begun here when no startup pass ran) — a walk that
+        // starts from an empty book because DNS was still
+        // resolving is a self-inflicted flake.
+        await BeginSeed();
+
         byte[] target = SHA256.HashData(key);
         var queried = new ConcurrentDictionary<string, bool>();
         var failures = new ConcurrentDictionary<string, int>();
