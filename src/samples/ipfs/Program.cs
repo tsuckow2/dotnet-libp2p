@@ -91,8 +91,8 @@ if (args[0] == "fetch")
 else if (args[0] is "providers" or "findnode")
 {
     KadClient kad = services.GetRequiredService<KadClient>();
-    kad.SeedBootstrapPeers();
-    logger.LogInformation("Seeded {count} bootstrap peers; walking the DHT...", KadDht.BootstrapPeers.Count);
+    await kad.SeedBootstrapPeersAsync(cts.Token);
+    logger.LogInformation("Seeded {count} bootstrap peers; walking the DHT...", kad.KnownPeers.Count);
 
     if (args[0] == "providers")
     {
@@ -183,7 +183,7 @@ class Fetcher(IManagedPeerSwitch peerSwitch, KadClient kad, ILogger logger)
             }
         }
 
-        kad.SeedBootstrapPeers();
+        await kad.SeedBootstrapPeersAsync(token);
         IReadOnlyList<KadPeer> providers = await kad.FindProvidersAsync(cid.Multihash, token);
         if (providers.Count == 0)
         {

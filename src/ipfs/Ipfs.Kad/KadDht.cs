@@ -26,10 +26,9 @@ public static class KadDht
     ///     The well-known bootstrap peers of the public network, as
     ///     address strings (the same set kubo ships as its defaults):
     ///     DNS-addressed bootstrappers first, then the planet-named
-    ///     IPFS Foundation nodes by IPv4. Kept as strings because not
-    ///     every entry is representable as a Multiaddress yet —
-    ///     /dnsaddr/ needs DNS TXT resolution before it denotes an
-    ///     endpoint at all.
+    ///     IPFS Foundation nodes by IPv4. Kept as strings because
+    ///     /dnsaddr/ entries denote endpoints only after DNS TXT
+    ///     resolution (see KadClient.SeedBootstrapPeersAsync).
     /// </summary>
     public static IReadOnlyList<string> BootstrapPeerAddresses =>
     [

@@ -76,29 +76,54 @@ public class KadClient
 
     /// <summary>
     ///     Seeds the book with the public bootstrap peers
-    ///     (<see cref="KadDht.BootstrapPeers"/>). Entries this node
-    ///     cannot use yet — /dnsaddr/ addresses, which need DNS TXT
-    ///     resolution — are skipped, never fatal: a bootstrap list is
-    ///     a starting point, not a contract.
+    ///     (<see cref="KadDht.BootstrapPeers"/>). Only the entries
+    ///     that are already concrete addresses are seeded; the
+    ///     /dnsaddr/ entries need <see cref="SeedBootstrapPeersAsync"/>.
     /// </summary>
     public void SeedBootstrapPeers()
     {
         foreach (string bootstrap in KadDht.BootstrapPeerAddresses)
         {
-            if (bootstrap.Contains("/dnsaddr/"))
-            {
-                continue;
-            }
-
-            Multiaddress addr = bootstrap;
-            string? peerId = addr.Get<P2P>()?.ToString();
-            if (peerId is null)
-            {
-                continue;
-            }
-
-            AddPeer(new KadPeer(new PeerId(peerId).Bytes, [addr]));
+            Seed(bootstrap);
         }
+    }
+
+    /// <summary>
+    ///     Seeds the book with the full public bootstrap set,
+    ///     resolving the /dnsaddr/ entries over DNS TXT first. The
+    ///     /dnsaddr/ set is the maintained one: the IP-literal
+    ///     bootstrappers have mostly retired, and leaning on the one
+    ///     survivor makes every walk hostage to a single busy node.
+    /// </summary>
+    public async Task SeedBootstrapPeersAsync(CancellationToken token = default)
+    {
+        foreach (string bootstrap in KadDht.BootstrapPeerAddresses)
+        {
+            foreach (string expanded in await DnsAddr.ExpandAsync(bootstrap, token))
+            {
+                Seed(expanded);
+            }
+        }
+    }
+
+    private void Seed(string address)
+    {
+        Multiaddress addr;
+        try
+        {
+            addr = address;
+        }
+        catch (Exception e) when (e is FormatException or NotSupportedException)
+        {
+            return;
+        }
+
+        if (addr.Get<P2P>()?.ToString() is not string peerId)
+        {
+            return;
+        }
+
+        AddPeer(new KadPeer(new PeerId(peerId).Bytes, [addr]));
     }
 
     internal KadJob? ClaimJob(byte[] remotePeerId)
