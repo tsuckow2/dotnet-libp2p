@@ -145,9 +145,7 @@ public class QuicProtocol : IProtocol, ITransport
         IPEndPoint localEndpoint = new(ipAddress, udpPort);
 
         addr = context.RemotePeer.Address;
-        isIp4 = addr.Has<IP4>();
-        protocol = isIp4 ? addr.Get<IP4>() : addr.Get<IP6>();
-        ipAddress = IPAddress.Parse(protocol.ToString()!);
+        ipAddress = await MultiaddressEndpoint.ResolveIpAsync(addr);
         udpPort = int.Parse(addr.Get<UDP>().ToString()!);
 
         IPEndPoint remoteEndpoint = new(ipAddress, udpPort);
@@ -199,8 +197,7 @@ public class QuicProtocol : IProtocol, ITransport
             throw new NotSupportedException("QUIC is not supported, check for presence of libmsquic and support of TLS 1.3.");
         }
 
-        MultiaddressProtocol protocol = address.Has<IP4>() ? address.Get<IP4>() : address.Get<IP6>();
-        var remoteEndPoint = new IPEndPoint(IPAddress.Parse(protocol.ToString()), address.Get<UDP>().Port);
+        var remoteEndPoint = new IPEndPoint(await MultiaddressEndpoint.ResolveIpAsync(address), address.Get<UDP>().Port);
 
         QuicConnection connection = await QuicConnection.ConnectAsync(new QuicClientConnectionOptions
         {

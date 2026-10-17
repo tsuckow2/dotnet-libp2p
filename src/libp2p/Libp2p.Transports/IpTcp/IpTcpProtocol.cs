@@ -126,8 +126,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
 
         Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         Multiaddress addr = context.RemotePeer.Address;
-        MultiaddressProtocol ipProtocol = addr.Has<IP4>() ? addr.Get<IP4>() : addr.Get<IP6>();
-        IPAddress ipAddress = IPAddress.Parse(ipProtocol.ToString());
+        IPAddress ipAddress = await MultiaddressEndpoint.ResolveIpAsync(addr);
         int tcpPort = addr.Get<TCP>().Port;
 
         _logger?.LogDebug("Dialing {0}:{1}", ipAddress, tcpPort);
@@ -217,9 +216,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
     public async Task<IRemoteComm> DialAsync(Multiaddress address)
     {
         Socket client = new(SocketType.Stream, ProtocolType.Tcp);
-        var isIP4 = address.Has<IP4>();
-        MultiaddressProtocol ipProtocol = isIP4 ? address.Get<IP4>() : address.Get<IP6>();
-        IPAddress ipAddress = IPAddress.Parse(ipProtocol.ToString());
+        IPAddress ipAddress = await MultiaddressEndpoint.ResolveIpAsync(address);
         int tcpPort = address.Get<TCP>().Port;
 
         _logger?.LogDebug("Dialing {0}:{1}", ipAddress, tcpPort);
