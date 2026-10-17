@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using Nethermind.Libp2p.Core;
 using ProtoBuf;
 
@@ -59,11 +60,11 @@ public class BitswapSession
         }
     }
 
-    private async Task SendBlockAsync(byte[] blockId, byte[] data)
+    private async Task SendBlockAsync(Cid cid, byte[] data)
     {
         await SendAsync(new Message
         {
-            payload = [new Block { prefix = blockId[..2], data = data }],
+            payload = [new Block { prefix = cid.Prefix, data = data }],
         });
     }
 
@@ -86,10 +87,24 @@ public class BitswapSession
                         {
                             continue;
                         }
-                        byte[]? data = await _store.GetAsync(entry.block);
+
+                        // Wants carry full CIDs; the store is keyed by
+                        // multihash, and the reply carries the wanted
+                        // CID's own prefix.
+                        Cid cid;
+                        try
+                        {
+                            cid = Cid.FromBytes(entry.block);
+                        }
+                        catch (FormatException)
+                        {
+                            continue;
+                        }
+
+                        byte[]? data = await _store.GetAsync(cid.Multihash);
                         if (data != null)
                         {
-                            await SendBlockAsync(entry.block, data);
+                            await SendBlockAsync(cid, data);
                         }
                     }
                 }
@@ -98,10 +113,13 @@ public class BitswapSession
                 {
                     foreach (Block block in message.payload)
                     {
-                        byte[] id = BlockIds.IdForReceived(block.prefix, block.data);
-                        await _store.PutAsync(id, block.data);
-                        OnBlock?.Invoke(id, block.data);
-                        if (_pending.TryRemove(BlockIds.Key(id), out TaskCompletionSource<byte[]>? waiter))
+                        // The block's id is its prefix plus the digest
+                        // recomputed from the content, so a corrupted
+                        // or substituted block never matches a want.
+                        byte[] receivedCid = [.. block.prefix, .. SHA256.HashData(block.data)];
+                        await _store.PutAsync(Cid.FromBytes(receivedCid).Multihash, block.data);
+                        OnBlock?.Invoke(receivedCid, block.data);
+                        if (_pending.TryRemove(BlockIds.Key(receivedCid), out TaskCompletionSource<byte[]>? waiter))
                         {
                             waiter.TrySetResult(block.data);
                         }
@@ -121,15 +139,16 @@ public class BitswapSession
 
     // ---- block and file exchange ----------------------------------------
 
-    public async Task<byte[]> GetBlockAsync(byte[] blockId, CancellationToken token = default)
+    /// <summary>Fetches a block by CID, from the local store when present, else from the peer.</summary>
+    public async Task<byte[]> GetBlockAsync(Cid cid, CancellationToken token = default)
     {
-        if (await _store.GetAsync(blockId) is { } local)
+        if (await _store.GetAsync(cid.Multihash) is { } local)
         {
             return local;
         }
 
         TaskCompletionSource<byte[]> waiter = _pending.GetOrAdd(
-            BlockIds.Key(blockId),
+            BlockIds.Key(cid.Bytes),
             _ => new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously));
 
         await SendAsync(new Message
@@ -137,7 +156,7 @@ public class BitswapSession
             wantlist = new Wantlist
             {
                 full = true,
-                entries = [new Entry { block = blockId }],
+                entries = [new Entry { block = cid.Bytes }],
             },
         });
 
@@ -188,7 +207,7 @@ public class BitswapSession
     /// <summary>Downloads a file by its root (manifest) id.</summary>
     public async Task GetFileAsync(byte[] rootId, Stream destination, CancellationToken token = default)
     {
-        byte[] manifest = await GetBlockAsync(rootId, token);
+        byte[] manifest = await GetBlockAsync(Cid.FromBytes(rootId), token);
         if (manifest.Length % BlockIds.MultihashLength != 0)
         {
             throw new InvalidDataException("The root block is not a file manifest (see PutFileAsync).");
@@ -196,7 +215,7 @@ public class BitswapSession
 
         for (int offset = 0; offset < manifest.Length; offset += BlockIds.MultihashLength)
         {
-            byte[] chunk = await GetBlockAsync(manifest[offset..(offset + BlockIds.MultihashLength)], token);
+            byte[] chunk = await GetBlockAsync(Cid.FromBytes(manifest[offset..(offset + BlockIds.MultihashLength)]), token);
             await destination.WriteAsync(chunk, token);
         }
     }

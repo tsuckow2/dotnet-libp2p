@@ -20,13 +20,14 @@ using Nethermind.Libp2p.Stack;
 // Block ids are sha2-256 multihashes of the content; a file is a
 // manifest block over 256 KiB chunk blocks (BitswapSession.PutFileAsync).
 
-if (args.Length == 0 || args[0] is not ("serve" or "get" or "providers" or "findnode"))
+if (args.Length == 0 || args[0] is not ("serve" or "get" or "providers" or "findnode" or "fetch"))
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  serve <file> [port]");
     Console.WriteLine("  get <peer-address> <root-id-hex> <output-file>");
     Console.WriteLine("  providers <multihash-hex>");
     Console.WriteLine("  findnode <peer-id>");
+    Console.WriteLine("  fetch <cid> <output-file>");
     return;
 }
 
@@ -57,7 +58,16 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-if (args[0] is "providers" or "findnode")
+if (args[0] == "fetch")
+{
+    var fetcher = new Fetcher(peerSwitch, services.GetRequiredService<KadClient>(), logger);
+    Cid cid = Cid.Parse(args[1]);
+    byte[] block = await fetcher.GetBlockAsync(cid, cts.Token);
+    logger.LogInformation("Fetched {cid}: {length} bytes, hash-verified", cid, block.Length);
+    await File.WriteAllBytesAsync(args[2], block, cts.Token);
+    logger.LogInformation("Wrote {file}", args[2]);
+}
+else if (args[0] is "providers" or "findnode")
 {
     KadClient kad = services.GetRequiredService<KadClient>();
     kad.SeedBootstrapPeers();
@@ -123,4 +133,61 @@ else
     logger.LogInformation("Saved {file} ({length} bytes)", outputFile, destination.Length);
 
     await connection.DisconnectAsync();
+}
+
+/// <summary>
+///     Block fetching for the peerless modes: a working Bitswap
+///     session is kept and reused; when it cannot serve a block, the
+///     DHT is walked for that block's providers and each is tried in
+///     turn. A block only ever comes back hash-verified — the
+///     session completes a want solely on a content hash match.
+/// </summary>
+class Fetcher(IManagedPeerSwitch peerSwitch, KadClient kad, ILogger logger)
+{
+    private BitswapSession? _session;
+
+    public async Task<byte[]> GetBlockAsync(Cid cid, CancellationToken token)
+    {
+        if (_session != null)
+        {
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
+            attempt.CancelAfter(TimeSpan.FromSeconds(40));
+            try
+            {
+                return await _session.GetBlockAsync(cid, attempt.Token);
+            }
+            catch (Exception)
+            {
+                _session = null;
+            }
+        }
+
+        kad.SeedBootstrapPeers();
+        IReadOnlyList<KadPeer> providers = await kad.FindProvidersAsync(cid.Multihash, token);
+        logger.LogInformation("DHT: {count} provider(s) for {cid}", providers.Count, cid);
+
+        foreach (KadPeer provider in providers)
+        {
+            foreach (Multiaddress addr in provider.DialAddresses)
+            {
+                using var attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
+                attempt.CancelAfter(TimeSpan.FromSeconds(40));
+                try
+                {
+                    IRemotePeerConnection connection = await peerSwitch.DialAsync(addr, attempt.Token);
+                    IManagedProtocolComm<BitswapSession> comm =
+                        await connection.Managed.DialAsync(BitSwap11Protocol.Ref, attempt.Token);
+                    byte[] block = await comm.comm.GetBlockAsync(cid, attempt.Token);
+                    _session = comm.comm;
+                    return block;
+                }
+                catch (Exception e)
+                {
+                    logger.LogDebug("Provider {peer} at {addr}: {error}", provider.PeerId, addr, e.Message);
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"No provider could serve {cid}.");
+    }
 }

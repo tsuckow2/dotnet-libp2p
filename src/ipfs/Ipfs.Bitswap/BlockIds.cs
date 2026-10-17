@@ -26,19 +26,6 @@ public static class BlockIds
         return id;
     }
 
-    /// <summary>The id a received block actually has, from its prefix and content.</summary>
-    public static byte[] IdForReceived(byte[] prefix, byte[] data)
-    {
-        // The sender puts the multihash code+length in the block prefix;
-        // the digest part of the id is recomputed from the content, so a
-        // corrupted or substituted block never matches the wanted id.
-        byte[] digest = SHA256.HashData(data);
-        byte[] id = new byte[prefix.Length + digest.Length];
-        prefix.CopyTo(id, 0);
-        digest.CopyTo(id, prefix.Length);
-        return id;
-    }
-
     public static string Key(byte[] id) => Convert.ToHexString(id);
     public static byte[] FromHex(string hex) => Convert.FromHexString(hex);
 }

@@ -15,10 +15,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\libp2p\Libp2p.Core\Libp2p.Core.csproj" />
+    <ProjectReference Include="..\..\cs-multihash\src\Multiformats.Hash\Multiformats.Hash.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="protobuf-net" />
+    <PackageReference Include="SimpleBase" />
     <PackageReference Include="Microsoft.SourceLink.GitHub">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
