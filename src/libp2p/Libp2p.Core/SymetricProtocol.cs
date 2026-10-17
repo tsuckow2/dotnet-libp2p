@@ -24,18 +24,21 @@ public abstract class SymmetricProtocol
 }
 
 /// <summary>
-///     Base for managed-tier protocols whose dial and listen paths share a
-///     negotiation step. <typeparamref name="TOut"/> is the typed comm the
-///     protocol hands back to its dialer.
+///     Base for managed-tier protocols whose dial and listen paths are
+///     the same connect step. <typeparamref name="TOut"/> is the typed
+///     comm the protocol hands back to its dialer. Negotiation is not
+///     the protocol's business: the switch's multistream has already
+///     selected this protocol on the stream before ConnectAsync runs,
+///     on both sides — a second negotiation here would put bytes on
+///     the wire that foreign peers (kubo) rightly reject.
 /// </summary>
 public abstract class SymmetricProtocol<TOut> : IProtocol<TOut>
 {
     public abstract string Id { get; }
 
-    public async Task<IManagedProtocolComm<TOut>> DialAsync(IManagedRemoteComm comm)
+    public Task<IManagedProtocolComm<TOut>> DialAsync(IManagedRemoteComm comm)
     {
-        await NegotiateAsync(comm);
-        return await ConnectAsync(comm, false);
+        return ConnectAsync(comm, false);
     }
 
     public async Task ListenAsync(IManagedRemoteComm comm)
@@ -43,6 +46,5 @@ public abstract class SymmetricProtocol<TOut> : IProtocol<TOut>
         await ConnectAsync(comm, true);
     }
 
-    protected abstract Task NegotiateAsync(IManagedRemoteComm comm);
     protected abstract Task<IManagedProtocolComm<TOut>> ConnectAsync(IManagedRemoteComm comm, bool isListener);
 }

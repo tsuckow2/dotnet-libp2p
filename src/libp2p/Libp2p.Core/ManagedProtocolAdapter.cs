@@ -12,11 +12,9 @@ namespace Nethermind.Libp2p.Core;
 ///     multistream selects it like any other protocol, and it runs the
 ///     managed protocol over a managed comm built from the stream channel.
 ///
-///     Managed protocols negotiate on dial (see SymmetricProtocol /
-///     NegotiationUtils) and do not negotiate on listen, so on the listen
-///     side the adapter first answers that negotiation — the protocol id
-///     line the dialer sends after multistream selection — and only then
-///     hands the channel to the protocol.
+///     Multistream has already selected the protocol when the adapter
+///     is bound, on both sides, so the adapter hands the channel
+///     straight to the protocol — no second negotiation.
 /// </summary>
 internal class ManagedProtocolAdapter<TProtocol, TOut>(IServiceProvider serviceProvider, ConnectionRegistry connectionRegistry)
     : IProtocol where TProtocol : IProtocol<TOut>
@@ -69,15 +67,6 @@ internal class ManagedProtocolAdapter<TProtocol, TOut>(IServiceProvider serviceP
     public async Task ListenAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IPeerContext context)
     {
         IRemotePeerConnection connection = GetConnection(context);
-
-        // Answer the managed tier's own negotiation (see class summary).
-        string proposed = await downChannel.ReadLineAsync();
-        if (proposed != Id)
-        {
-            await downChannel.WriteLineAsync("na");
-            return;
-        }
-        await downChannel.WriteLineAsync(Id);
 
         IManagedRemoteComm comm = new GenericManagedRemoteComm(true, downChannel, connection.TransportConnection, connection.Managed);
         await Protocol.ListenAsync(comm);

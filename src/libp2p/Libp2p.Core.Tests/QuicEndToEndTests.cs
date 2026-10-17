@@ -27,11 +27,6 @@ public class QuicEndToEndTests
 
         public override string Id => "/echo/1.0.0";
 
-        protected override async Task NegotiateAsync(IManagedRemoteComm comm)
-        {
-            await NegotiationUtils.NegotiateProtocolAsync(comm, Id);
-        }
-
         protected override async Task<IManagedProtocolComm<string>> ConnectAsync(IManagedRemoteComm comm, bool isListener)
         {
             if (isListener)

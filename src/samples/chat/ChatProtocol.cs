@@ -23,10 +23,6 @@ internal class ChatProtocol : SymmetricProtocol<ChatProtocolResult>
     private static readonly ConsoleReader Reader = new();
     public override string Id => "/chat/1.0.0";
 
-    protected override async Task NegotiateAsync(IManagedRemoteComm comm)
-    {
-        await NegotiationUtils.NegotiateProtocolAsync(comm, Id);
-    }
 
     protected override async Task<IManagedProtocolComm<ChatProtocolResult>> ConnectAsync(IManagedRemoteComm comm, bool isListener)
     {
