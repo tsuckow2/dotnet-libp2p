@@ -164,6 +164,15 @@ class Fetcher(IManagedPeerSwitch peerSwitch, KadClient kad, ILogger logger)
 
         kad.SeedBootstrapPeers();
         IReadOnlyList<KadPeer> providers = await kad.FindProvidersAsync(cid.Multihash, token);
+        if (providers.Count == 0)
+        {
+            // A walk can come back empty-handed in a ghost-heavy
+            // region; the peer book it built makes a second walk
+            // start closer. Real clients are persistent here too.
+            logger.LogInformation("DHT: no providers on the first walk; walking again");
+            providers = await kad.FindProvidersAsync(cid.Multihash, token);
+        }
+
         logger.LogInformation("DHT: {count} provider(s) for {cid}", providers.Count, cid);
 
         foreach (KadPeer provider in providers.Take(40))

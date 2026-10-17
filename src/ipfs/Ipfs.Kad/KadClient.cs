@@ -35,8 +35,11 @@ public class KadClient
 {
     public const int WalkWidth = 20;   // k: how many closest peers a walk tracks
     public const int Alpha = 3;        // queries in flight per round
-    private const int MaxRounds = 16;
-    private static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(20);
+    // The public DHT's closest sets are full of ghosts (peers that
+    // left without a trace), so the walk budgets generously: many
+    // rounds, each query cheap to fail.
+    private const int MaxRounds = 32;
+    private static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(10);
 
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger? _logger;
