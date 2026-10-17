@@ -166,28 +166,49 @@ class Fetcher(IManagedPeerSwitch peerSwitch, KadClient kad, ILogger logger)
         IReadOnlyList<KadPeer> providers = await kad.FindProvidersAsync(cid.Multihash, token);
         logger.LogInformation("DHT: {count} provider(s) for {cid}", providers.Count, cid);
 
-        foreach (KadPeer provider in providers)
+        foreach (KadPeer provider in providers.Take(40))
         {
-            foreach (Multiaddress addr in provider.DialAddresses)
+            foreach (Multiaddress addr in provider.DialAddresses.Where(IsPubliclyDialable).Take(3))
             {
                 using var attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
-                attempt.CancelAfter(TimeSpan.FromSeconds(40));
+                attempt.CancelAfter(TimeSpan.FromSeconds(25));
+                string stage = "dial";
                 try
                 {
                     IRemotePeerConnection connection = await peerSwitch.DialAsync(addr, attempt.Token);
+                    stage = "bitswap";
                     IManagedProtocolComm<BitswapSession> comm =
                         await connection.Managed.DialAsync(BitSwap11Protocol.Ref, attempt.Token);
+                    stage = "block";
                     byte[] block = await comm.comm.GetBlockAsync(cid, attempt.Token);
                     _session = comm.comm;
+                    logger.LogInformation("Served by {peer} at {addr}", provider.PeerId, addr);
                     return block;
                 }
                 catch (Exception e)
                 {
-                    logger.LogDebug("Provider {peer} at {addr}: {error}", provider.PeerId, addr, e.Message);
+                    logger.LogInformation("Provider {peer} at {addr}: {stage} failed: {error}",
+                        provider.PeerId, addr, stage, e.Message);
                 }
             }
         }
 
         throw new InvalidOperationException($"No provider could serve {cid}.");
+    }
+
+    // Prefer addresses a public client can plausibly reach: no relay
+    // circuits (unsupported), no websockets (not registered), and no
+    // private or loopback IPs, which the DHT is full of.
+    private static bool IsPubliclyDialable(Multiaddress addr)
+    {
+        string text = addr.ToString();
+        if (text.Contains("/p2p-circuit") || text.Contains("/ws") || text.Contains("/ip6/"))
+        {
+            return false;
+        }
+
+        return !text.Contains("/ip4/10.") && !text.Contains("/ip4/192.168.") &&
+               !text.Contains("/ip4/127.") && !System.Text.RegularExpressions.Regex.IsMatch(text, @"/ip4/172\.(1[6-9]|2\d|3[01])\.");
+    }
     }
 }

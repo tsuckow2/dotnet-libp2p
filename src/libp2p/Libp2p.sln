@@ -81,6 +81,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.Kad.Tests", "..\ipfs\I
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.Bitswap.Tests", "..\ipfs\Ipfs.Bitswap.Tests\Ipfs.Bitswap.Tests.csproj", "{ADB5F322-DB32-4308-A014-B7FD00E5504E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.UnixFs", "..\ipfs\Ipfs.UnixFs\Ipfs.UnixFs.csproj", "{3A036E69-00FD-47A7-A1E5-E329F04D0108}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -223,6 +225,10 @@ Global
 		{ADB5F322-DB32-4308-A014-B7FD00E5504E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ADB5F322-DB32-4308-A014-B7FD00E5504E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ADB5F322-DB32-4308-A014-B7FD00E5504E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3A036E69-00FD-47A7-A1E5-E329F04D0108}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3A036E69-00FD-47A7-A1E5-E329F04D0108}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3A036E69-00FD-47A7-A1E5-E329F04D0108}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3A036E69-00FD-47A7-A1E5-E329F04D0108}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
