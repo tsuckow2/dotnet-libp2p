@@ -21,7 +21,7 @@ using Nethermind.Libp2p.Stack;
 // Block ids are sha2-256 multihashes of the content; a file is a
 // manifest block over 256 KiB chunk blocks (BitswapSession.PutFileAsync).
 
-if (args.Length == 0 || args[0] is not ("serve" or "get" or "providers" or "findnode" or "fetch"))
+if (args.Length == 0 || args[0] is not ("serve" or "get" or "providers" or "findnode" or "fetch" or "dial"))
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  serve <file> [port]");
@@ -29,6 +29,7 @@ if (args.Length == 0 || args[0] is not ("serve" or "get" or "providers" or "find
     Console.WriteLine("  providers <multihash-hex>");
     Console.WriteLine("  findnode <peer-id>");
     Console.WriteLine("  fetch <cid> <output-file>");
+    Console.WriteLine("  dial <peer-address>");
     return;
 }
 
@@ -62,7 +63,20 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-if (args[0] == "fetch")
+if (args[0] == "dial")
+{
+    try
+    {
+        IRemotePeerConnection connection = await peerSwitch.DialAsync((Multiaddress)args[1], cts.Token);
+        logger.LogInformation("Dialed {addr}: connected", args[1]);
+        await connection.DisconnectAsync();
+    }
+    catch (Exception e)
+    {
+        Console.WriteLine(e.ToString());
+    }
+}
+else if (args[0] == "fetch")
 {
     var fetcher = new Fetcher(peerSwitch, services.GetRequiredService<KadClient>(), logger);
     Cid cid = Cid.Parse(args[1]);
