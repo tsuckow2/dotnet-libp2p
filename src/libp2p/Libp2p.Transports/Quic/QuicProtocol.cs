@@ -136,18 +136,17 @@ public class QuicProtocol : IProtocol, ITransport
             throw new NotSupportedException("QUIC is not supported, check for presence of libmsquic and support of TLS 1.3.");
         }
 
-        Multiaddress addr = context.LocalPeer.Address;
-        bool isIp4 = addr.Has<IP4>();
-        MultiaddressProtocol protocol = isIp4 ? addr.Get<IP4>() : addr.Get<IP6>();
-        IPAddress ipAddress = IPAddress.Parse(protocol.ToString());
-        int udpPort = int.Parse(addr.Get<UDP>().ToString());
+        // The local endpoint is an ephemeral wildcard of the
+        // remote's family. (It used to be parsed out of the local
+        // peer's address, which is the peer's LISTEN address — a
+        // TCP one in any node that never configured QUIC listening —
+        // and died on its missing UDP part.)
+        Multiaddress addr = context.RemotePeer.Address;
+        IPAddress ipAddress = await MultiaddressEndpoint.ResolveIpAsync(addr);
+        int udpPort = int.Parse(addr.Get<UDP>().ToString()!);
 
-        IPEndPoint localEndpoint = new(ipAddress, udpPort);
-
-        addr = context.RemotePeer.Address;
-        ipAddress = await MultiaddressEndpoint.ResolveIpAsync(addr);
-        udpPort = int.Parse(addr.Get<UDP>().ToString()!);
-
+        IPEndPoint localEndpoint = new(
+            ipAddress.AddressFamily == AddressFamily.InterNetwork ? IPAddress.Any : IPAddress.IPv6Any, 0);
         IPEndPoint remoteEndpoint = new(ipAddress, udpPort);
 
         QuicClientConnectionOptions clientConnectionOptions = new()
