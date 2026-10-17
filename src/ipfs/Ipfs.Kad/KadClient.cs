@@ -109,16 +109,18 @@ public class KadClient
     private void Seed(string address)
     {
         Multiaddress addr;
+        string? peerId;
         try
         {
             addr = address;
+            peerId = addr.Get<P2P>()?.ToString();
         }
-        catch (Exception e) when (e is FormatException or NotSupportedException)
+        catch (Exception e) when (e is FormatException or NotSupportedException or InvalidOperationException)
         {
             return;
         }
 
-        if (addr.Get<P2P>()?.ToString() is not string peerId)
+        if (peerId is null)
         {
             return;
         }

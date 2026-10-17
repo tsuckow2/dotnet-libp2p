@@ -50,11 +50,18 @@ internal static class DnsAddr
             }
 
             string resolved = record["dnsaddr=".Length..];
-            // The record replaces the /dnsaddr/<host> prefix of the
-            // original address; anything after it (a /p2p/ part, in
-            // practice) carries over.
-            string suffix = address[(address.IndexOf(host, StringComparison.Ordinal) + host.Length)..];
-            await ExpandAsync(resolved + suffix, depth + 1, results, token);
+            if (!resolved.Contains("/p2p/"))
+            {
+                // The record names no peer itself, so it belongs to
+                // the peer the original address named: the /p2p/
+                // suffix carries over. (A record that DOES carry a
+                // /p2p/ part is a complete address for its own peer
+                // — the host's TXT set lists every bootstrapper
+                // there, and suffixing would double the part.)
+                resolved += address[(address.IndexOf(host, StringComparison.Ordinal) + host.Length)..];
+            }
+
+            await ExpandAsync(resolved, depth + 1, results, token);
         }
     }
 
