@@ -43,6 +43,9 @@ ServiceProvider services = new ServiceCollection()
     .AddLibp2p(builder => builder.AddManagedProtocol(BitSwap11Protocol.Ref).AddAppLayerProtocol<KadDhtProtocol>())
     .AddLogging(builder =>
         builder.SetMinimumLevel(args.Contains("--trace") ? LogLevel.Trace : LogLevel.Information)
+            .SetMinimumLevel(Enum.TryParse<LogLevel>(Environment.GetEnvironmentVariable("IPFS_LOG"), out LogLevel parsed)
+                ? parsed
+                : LogLevel.Information)
             .AddSimpleConsole(l =>
             {
                 l.SingleLine = true;
