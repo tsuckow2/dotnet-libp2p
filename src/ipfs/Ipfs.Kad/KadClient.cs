@@ -39,7 +39,7 @@ public class KadClient
     // left without a trace), so the walk budgets generously: many
     // rounds, each query cheap to fail.
     private const int MaxRounds = 32;
-    private static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(15);
 
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger? _logger;
@@ -200,12 +200,17 @@ public class KadClient
     {
         byte[] target = SHA256.HashData(key);
         var queried = new ConcurrentDictionary<string, bool>();
+        var failures = new ConcurrentDictionary<string, int>();
         var providers = new ConcurrentDictionary<string, KadPeer>();
 
         for (int round = 0; round < MaxRounds; round++)
         {
+            // A peer whose query fails is not written off on the
+            // spot — a slow major peer (the bootstrappers crawl
+            // under load) deserves a second chance in a later round —
+            // but twice-failed peers stop consuming rounds.
             List<KadPeer> batch = _peers.Values
-                .Where(peer => !queried.ContainsKey(peer.Key))
+                .Where(peer => !queried.ContainsKey(peer.Key) && failures.GetValueOrDefault(peer.Key) < 2)
                 .OrderBy(peer => SHA256.HashData(peer.Id), new XorDistanceComparer(target))
                 .Take(Alpha)
                 .ToList();
@@ -216,13 +221,15 @@ public class KadClient
 
             Message?[] responses = await Task.WhenAll(batch.Select(async peer =>
             {
-                queried[peer.Key] = true;
                 try
                 {
-                    return await QueryAsync(peer, new Message { type = type, key = key }, token);
+                    Message response = await QueryAsync(peer, new Message { type = type, key = key }, token);
+                    queried[peer.Key] = true;
+                    return response;
                 }
                 catch (Exception e)
                 {
+                    failures.AddOrUpdate(peer.Key, 1, (_, count) => count + 1);
                     _logger?.LogDebug("Kad query to {peer} failed: {error}", peer.PeerId, e.Message);
                     return null;
                 }
