@@ -31,6 +31,17 @@ public readonly record struct Cid
     /// <summary>The hash digest inside the multihash.</summary>
     public byte[] Digest => Multiformats.Hash.Multihash.Decode(Multihash).Digest;
 
+    // A CID is its bytes: two CIDs are equal when the bytes are,
+    // not when the arrays happen to be the same object.
+    public bool Equals(Cid other) => Bytes.SequenceEqual(other.Bytes);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.AddBytes(Bytes);
+        return hash.ToHashCode();
+    }
+
     /// <summary>The CID prefix a Bitswap block carries: everything but the digest.</summary>
     public byte[] Prefix => Bytes[..^Digest.Length];
 
@@ -39,10 +50,16 @@ public readonly record struct Cid
         // A CIDv0 is a bare multihash; anything else starts with the
         // version varint. A sha2-256 multihash starts 0x12 0x20, which
         // cannot be a version+codec pair, so the two never collide.
-        if (Multiformats.Hash.Multihash.Decode(bytes) is { } decoded
-            && decoded.ToBytes().Length == bytes.Length)
+        try
         {
-            return new Cid { Bytes = bytes, Version = 0, Codec = DagPbCodec, Multihash = bytes };
+            if (Multiformats.Hash.Multihash.Decode(bytes).ToBytes().Length == bytes.Length)
+            {
+                return new Cid { Bytes = bytes, Version = 0, Codec = DagPbCodec, Multihash = bytes };
+            }
+        }
+        catch (Exception)
+        {
+            // Not a bare multihash — fall through to the v1 parse.
         }
 
         int offset = 0;
