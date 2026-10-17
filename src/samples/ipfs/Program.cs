@@ -8,6 +8,7 @@ using Nethermind.Ipfs.Bitswap;
 using Nethermind.Ipfs.Kad;
 using Nethermind.Ipfs.UnixFs;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Extensions;
 using Nethermind.Libp2p.Stack;
 
 // A consumer of the Nethermind.Ipfs libraries:
@@ -39,7 +40,7 @@ localPeer.GetOrAddAddress("/ip4/0.0.0.0/tcp/0");
 
 ServiceProvider services = new ServiceCollection()
     .AddSingleton<IBlockStore>(store)
-    .AddSingleton<KadClient>()
+    .AddKadDht()
     .AddLibp2pLocalPeer(localPeer)
     .AddLibp2p(builder => builder.AddManagedProtocol(BitSwap11Protocol.Ref).AddAppLayerProtocol<KadDhtProtocol>())
     .AddLogging(builder =>
@@ -62,6 +63,10 @@ Console.CancelKeyPress += (_, e) =>
     e.Cancel = true;
     cts.Cancel();
 };
+
+// Bring-up: components with startup work (the Kad client's
+// bootstrap seed) begin here; lookups await the seed itself.
+await services.StartLibp2pAsync(cts.Token);
 
 if (args[0] == "dial")
 {
@@ -105,8 +110,7 @@ else if (args[0] == "fetch")
 else if (args[0] is "providers" or "findnode")
 {
     KadClient kad = services.GetRequiredService<KadClient>();
-    await kad.SeedBootstrapPeersAsync(cts.Token);
-    logger.LogInformation("Seeded {count} bootstrap peers; walking the DHT...", kad.KnownPeers.Count);
+    logger.LogInformation("Walking the DHT...");
 
     if (args[0] == "providers")
     {
@@ -197,7 +201,6 @@ class Fetcher(IManagedPeerSwitch peerSwitch, KadClient kad, ILogger logger)
             }
         }
 
-        await kad.SeedBootstrapPeersAsync(token);
         IReadOnlyList<KadPeer> providers = await kad.FindProvidersAsync(cid.Multihash, token);
         if (providers.Count == 0)
         {
