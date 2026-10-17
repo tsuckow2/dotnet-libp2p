@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Multiformats.Address;
 using Nethermind.Ipfs.Bitswap;
 using Nethermind.Ipfs.Kad;
+using Nethermind.Ipfs.UnixFs;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Stack;
 
@@ -62,10 +63,27 @@ if (args[0] == "fetch")
 {
     var fetcher = new Fetcher(peerSwitch, services.GetRequiredService<KadClient>(), logger);
     Cid cid = Cid.Parse(args[1]);
-    byte[] block = await fetcher.GetBlockAsync(cid, cts.Token);
-    logger.LogInformation("Fetched {cid}: {length} bytes, hash-verified", cid, block.Length);
-    await File.WriteAllBytesAsync(args[2], block, cts.Token);
-    logger.LogInformation("Wrote {file}", args[2]);
+    string output = args[2];
+
+    try
+    {
+        byte[] content = await UnixFsFile.ReadAsync(cid, fetcher.GetBlockAsync, cts.Token);
+        await File.WriteAllBytesAsync(output, content, cts.Token);
+        logger.LogInformation("Fetched file {cid}: {length} bytes, every block hash-verified", cid, content.Length);
+    }
+    catch (InvalidDataException)
+    {
+        IReadOnlyList<(string Name, Cid Cid)> entries = await UnixFsFile.ListDirectoryAsync(cid, fetcher.GetBlockAsync, cts.Token);
+        Directory.CreateDirectory(output);
+        logger.LogInformation("{cid} is a directory with {count} entries; fetching each file", cid, entries.Count);
+        foreach ((string name, Cid child) in entries)
+        {
+            byte[] content = await UnixFsFile.ReadAsync(child, fetcher.GetBlockAsync, cts.Token);
+            string path = Path.Combine(output, name);
+            await File.WriteAllBytesAsync(path, content, cts.Token);
+            logger.LogInformation("  {name}: {length} bytes", name, content.Length);
+        }
+    }
 }
 else if (args[0] is "providers" or "findnode")
 {
