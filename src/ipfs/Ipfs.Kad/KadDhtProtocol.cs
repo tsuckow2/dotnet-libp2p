@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using Multiformats.Address.Protocols;
 using Nethermind.Libp2p.Core;
 
 namespace Nethermind.Ipfs.Kad;
@@ -24,7 +25,25 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
             throw new InvalidOperationException("This node has no KadClient to dial DHT queries with.");
         }
 
-        KadJob? job = client.ClaimJob(context.RemotePeer.Identity.PeerId.Bytes);
+        // The job is claimed by the peer id the client dialed, which
+        // the remote peer's address book carries in its addresses'
+        // /p2p/ parts. The connection's remote identity cannot key
+        // the claim: for hashed peer ids (e.g. RSA) it is still the
+        // switch's placeholder at this point.
+        KadJob? job = null;
+        foreach (string candidate in context.RemotePeer.Addresses.Keys
+                     .Select(addr => addr.Get<P2P>()?.ToString())
+                     .Where(id => id is not null)
+                     .Distinct())
+        {
+            job = client.ClaimJob(new PeerId(candidate!).Bytes);
+            if (job is not null)
+            {
+                break;
+            }
+        }
+
+        job ??= client.ClaimJob(context.RemotePeer.Identity.PeerId.Bytes);
         if (job is null)
         {
             throw new InvalidOperationException(
