@@ -9,8 +9,11 @@ namespace Nethermind.Libp2p.Protocols;
 /// <summary>
 ///     https://github.com/multiformats/multistream-select
 /// </summary>
-public class MultistreamProtocol : IProtocol
+public class MultistreamProtocol : ISpecificProtocolSelector
 {
+    /// <inheritdoc />
+    public IChannelRequest? SpecificRequest { get; set; }
+
     private readonly ILogger? _logger;
     private const string ProtocolNotSupported = "na";
     public string Id => "/multistream/1.0.0";
@@ -20,7 +23,7 @@ public class MultistreamProtocol : IProtocol
         _logger = loggerFactory?.CreateLogger<MultistreamProtocol>();
     }
     public async Task DialAsync(IChannel channel, IChannelFactory channelFactory,
-        IPeerContext context)
+        IRemotePeerConnection connection)
     {
         if (!await SendHello(channel))
         {
@@ -48,14 +51,14 @@ public class MultistreamProtocol : IProtocol
 
         IProtocol? selected = null;
 
-        if (context.SpecificProtocolRequest?.SubProtocol is not null)
+        if (SpecificRequest?.SubProtocol is not null)
         {
-            _logger?.LogDebug($"Proposing just {context.SpecificProtocolRequest.SubProtocol}");
-            if (await DialProtocol(context.SpecificProtocolRequest.SubProtocol) == true)
+            _logger?.LogDebug($"Proposing just {SpecificRequest.SubProtocol}");
+            if (await DialProtocol(SpecificRequest.SubProtocol) == true)
             {
-                selected = context.SpecificProtocolRequest.SubProtocol;
+                selected = SpecificRequest.SubProtocol;
             }
-            context.SpecificProtocolRequest = null;
+            SpecificRequest = null;
         }
         else
         {
@@ -80,11 +83,11 @@ public class MultistreamProtocol : IProtocol
             return;
         }
         _logger?.LogDebug($"Protocol selected during dialing: {selected}");
-        await channelFactory.SubDialAndBind(channel, context, selected);
+        await channelFactory.SubDialAndBind(channel, connection, selected);
     }
 
     public async Task ListenAsync(IChannel channel, IChannelFactory channelFactory,
-        IPeerContext context)
+        IRemotePeerConnection connection)
     {
         if (!await SendHello(channel))
         {
@@ -115,7 +118,7 @@ public class MultistreamProtocol : IProtocol
         }
 
         _logger?.LogDebug($"Protocol selected during listening: {selected}");
-        await channelFactory.SubListenAndBind(channel, context, selected);
+        await channelFactory.SubListenAndBind(channel, connection, selected);
     }
 
     private async Task<bool> SendHello(IChannel channel)

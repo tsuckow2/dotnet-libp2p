@@ -25,7 +25,7 @@ public class YamuxProtocol : SymmetricProtocol, IMuxerProtocol
     public string Id => "/yamux/1.0.0";
 
     protected override async Task ConnectAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context, bool isListener)
+        IRemotePeerConnection connection, bool isListener)
     {
         if (channelFactory is null)
         {
@@ -40,7 +40,7 @@ public class YamuxProtocol : SymmetricProtocol, IMuxerProtocol
         try
         {
             int streamIdCounter = isListener ? 2 : 1;
-            context.Connected(context.RemotePeer);
+            connection.Connected();
             int pingCounter = 0;
 
             using Timer timer = new((s) =>
@@ -50,7 +50,7 @@ public class YamuxProtocol : SymmetricProtocol, IMuxerProtocol
 
             _ = Task.Run(() =>
             {
-                foreach (IChannelRequest request in context.SubDialRequests.GetConsumingEnumerable())
+                foreach (IChannelRequest request in connection.SubDialRequests.GetConsumingEnumerable())
                 {
                     int streamId = streamIdCounter;
                     Interlocked.Add(ref streamIdCounter, 2);
@@ -170,13 +170,11 @@ public class YamuxProtocol : SymmetricProtocol, IMuxerProtocol
 
                 if (isListenerChannel)
                 {
-                    upChannel = channelFactory.SubListen(context);
+                    upChannel = channelFactory.SubListen(connection);
                 }
                 else
                 {
-                    IPeerContext dialContext = context.Fork();
-                    dialContext.SpecificProtocolRequest = channelRequest;
-                    upChannel = channelFactory.SubDial(dialContext);
+                    upChannel = channelFactory.SubDialForRequest(connection, channelRequest);
                 }
 
                 ChannelState state = new(upChannel, channelRequest);

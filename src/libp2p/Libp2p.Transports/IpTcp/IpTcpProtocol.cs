@@ -17,14 +17,14 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
 
     public string Id => "ip-tcp";
 
-    public async Task ListenAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IPeerContext context)
+    public async Task ListenAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
         if (channelFactory is null)
         {
             throw new Exception("Protocol is not properly instantiated");
         }
 
-        Multiaddress addr = context.LocalPeer.Address;
+        Multiaddress addr = connection.LocalPeer.Address;
         bool isIP4 = addr.Has<IP4>();
         MultiaddressProtocol ipProtocol = isIP4 ? addr.Get<IP4>() : addr.Get<IP6>();
         IPAddress ipAddress = IPAddress.Parse(ipProtocol.ToString());
@@ -44,32 +44,32 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
         Multiaddress localMultiaddress = new();
         localMultiaddress = isIP4 ? localMultiaddress.Add<IP4>(localIpEndpoint.Address.MapToIPv4()) : localMultiaddress.Add<IP6>(localIpEndpoint.Address.MapToIPv6());
         localMultiaddress = localMultiaddress.Add<TCP>(localIpEndpoint.Port);
-        context.LocalEndpoint = localMultiaddress;
+        connection.LocalEndpoint = localMultiaddress;
 
         if (tcpPort == 0)
         {
-            context.LocalPeer.Address = context.LocalPeer.Address
+            connection.LocalPeer.Address = connection.LocalPeer.Address
                 .ReplaceOrAdd<TCP>(localIpEndpoint.Port);
         }
 
         _logger?.LogDebug("Ready to handle connections");
-        context.ListenerReady();
+        connection.ListenerReady();
 
         await Task.Run(async () =>
         {
             for (; ; )
             {
                 Socket client = await srv.AcceptAsync();
-                IPeerContext clientContext = context.Fork();
+                IRemotePeerConnection clientConnection = channelFactory.AcceptConnection();
                 IPEndPoint remoteIpEndpoint = (IPEndPoint)client.RemoteEndPoint!;
 
                 Multiaddress remoteMultiaddress = new();
                 remoteMultiaddress = isIP4 ? remoteMultiaddress.Add<IP4>(remoteIpEndpoint.Address.MapToIPv4()) : remoteMultiaddress.Add<IP6>(remoteIpEndpoint.Address.MapToIPv6());
                 remoteMultiaddress = remoteMultiaddress.Add<TCP>(remoteIpEndpoint.Port);
 
-                clientContext.RemoteEndpoint = clientContext.RemotePeer.Address = remoteMultiaddress;
+                clientConnection.RemoteEndpoint = clientConnection.RemotePeer.Address = remoteMultiaddress;
 
-                IChannel upChannel = channelFactory.SubListen(clientContext);
+                IChannel upChannel = channelFactory.SubListen(clientConnection);
 
                 _ = Task.Run(async () =>
                 {
@@ -109,7 +109,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
                     }
                     catch (SocketException)
                     {
-                        _logger?.LogInformation($"Disconnected({context.Id}) due to a socket exception");
+                        _logger?.LogInformation($"Disconnected({remoteMultiaddress}) due to a socket exception");
                         await upChannel.CloseAsync();
                     }
                 });
@@ -117,7 +117,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
         });
     }
 
-    public async Task DialAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IPeerContext context)
+    public async Task DialAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
         if (channelFactory is null)
         {
@@ -125,7 +125,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
         }
 
         Socket client = new(SocketType.Stream, ProtocolType.Tcp);
-        Multiaddress addr = context.RemotePeer.Address;
+        Multiaddress addr = connection.RemotePeer.Address;
         IPAddress ipAddress = await MultiaddressEndpoint.ResolveIpAsync(addr);
         int tcpPort = addr.Get<TCP>().Port;
 
@@ -137,7 +137,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
         }
         catch (SocketException e)
         {
-            _logger?.LogDebug($"Failed({context.Id}) to connect {addr}");
+            _logger?.LogDebug($"Failed to connect {addr}");
             _logger?.LogTrace($"Failed with {e.GetType()}: {e.Message}");
             _ = singalingChannel.CloseAsync();
             return;
@@ -156,17 +156,17 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
         var remoteMultiaddress = new Multiaddress();
         var remoteIpAddress = isIP4 ? remoteEndpoint.Address.MapToIPv4() : remoteEndpoint.Address.MapToIPv6();
         remoteMultiaddress = isIP4 ? remoteMultiaddress.Add<IP4>(remoteIpAddress) : remoteMultiaddress.Add<IP6>(remoteIpAddress);
-        context.RemoteEndpoint = remoteMultiaddress.Add<TCP>(remoteEndpoint.Port);
+        connection.RemoteEndpoint = remoteMultiaddress.Add<TCP>(remoteEndpoint.Port);
 
 
         var localMultiaddress = new Multiaddress();
         var localIpAddress = isIP4 ? localEndpoint.Address.MapToIPv4() : localEndpoint.Address.MapToIPv6();
         localMultiaddress = isIP4 ? localMultiaddress.Add<IP4>(localIpAddress) : localMultiaddress.Add<IP6>(localIpAddress);
-        context.LocalEndpoint = localMultiaddress.Add<TCP>(localEndpoint.Port);
+        connection.LocalEndpoint = localMultiaddress.Add<TCP>(localEndpoint.Port);
 
-        context.LocalPeer.Address = context.LocalEndpoint.Add<P2P>(context.LocalPeer.Identity.PeerId.ToString());
+        connection.LocalPeer.Address = connection.LocalEndpoint!.Add<P2P>(connection.LocalPeer.Identity.PeerId.ToString());
 
-        IChannel upChannel = channelFactory.SubDial(context);
+        IChannel upChannel = channelFactory.SubDial(connection);
 
         Task receiveTask = Task.Run(async () =>
         {
@@ -178,7 +178,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
                     int dataLength = await client.ReceiveAsync(buf, SocketFlags.None);
                     if (dataLength != 0)
                     {
-                        _logger?.LogDebug("Receive {0} data, len={1}", context.Id, dataLength);
+                        _logger?.LogDebug("Receive {0} data, len={1}", addr, dataLength);
                         if ((await upChannel.WriteAsync(new ReadOnlySequence<byte>(buf[..dataLength]))) != IOResult.Ok)
                         {
                             break;
@@ -199,7 +199,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
             {
                 await foreach (ReadOnlySequence<byte> data in upChannel.ReadAllAsync())
                 {
-                    _logger?.LogDebug("Send {0} data, len={1}", context.Id, data.Length);
+                    _logger?.LogDebug("Send {0} data, len={1}", addr, data.Length);
                     await client.SendAsync(data.ToArray(), SocketFlags.None);
                 }
             }

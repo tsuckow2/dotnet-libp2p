@@ -16,12 +16,6 @@ internal class RemotePeer : IRemotePeer
         Addresses = new ConcurrentDictionary<Multiaddress, PeerAddressAccounting>();
     }
 
-    private RemotePeer(Identity identity, ConcurrentDictionary<Multiaddress, PeerAddressAccounting> addresses)
-    {
-        Identity = identity;
-        Addresses = addresses;
-    }
-
     public Identity Identity { get; set; }
     public ConcurrentDictionary<Multiaddress, PeerAddressAccounting> Addresses { get; }
 
@@ -38,13 +32,5 @@ internal class RemotePeer : IRemotePeer
     public PeerAddressAccounting GetOrAddAddress(Multiaddress address)
     {
         return Addresses.GetOrAdd(address, _ => new PeerAddressAccounting());
-    }
-
-    /// <summary>
-    ///     A fork for a new peer context: same peer, same address book.
-    /// </summary>
-    internal RemotePeer Fork()
-    {
-        return new RemotePeer(Identity, Addresses);
     }
 }

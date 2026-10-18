@@ -5,25 +5,28 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.Libp2p.Core;
 
-internal class ManagedPeer(IRemotePeer remotePeer, RemotePeerConnection connection, IServiceProvider serviceProvider, ConnectionRegistry connectionRegistry, IReadOnlyList<IProtocol> managedAdapters) : IManagedPeer
+internal class ManagedPeer(RemotePeerConnection connection, IServiceProvider serviceProvider, IReadOnlyList<IProtocol> managedAdapters) : IManagedPeer
 {
-    public IRemotePeer RemotePeer => remotePeer;
+    // Read through the connection, so the managed view always names
+    // the peer the connection currently carries.
+    public IRemotePeer RemotePeer => connection.RemotePeer;
 
     public IChannelMultiplexer? Mux { get; set; }
 
     public async Task<IManagedProtocolComm<TOut>> DialAsync<TProtocol, TOut>(ProtocolRef<TProtocol, TOut> protocolRef, CancellationToken token = default)
         where TProtocol : IProtocol<TOut>
     {
-        if (connection.Context is PeerContext context)
+        if (connection.IsStackConnection)
         {
-            // Chain-built connection: queue the protocol as a sub-dial on
-            // the connection's context. The muxer opens a stream, multistream
-            // selects the adapter registered under the protocol's id, and the
-            // adapter runs the protocol and completes the typed request.
+            // Stack-built connection: queue the protocol as a sub-dial
+            // on the connection itself. The muxer opens a stream,
+            // multistream selects the adapter registered under the
+            // protocol's id, and the adapter runs the protocol and
+            // completes the typed request.
             var adapter = managedAdapters.OfType<ManagedProtocolAdapter<TProtocol, TOut>>().FirstOrDefault()
                 ?? throw new InvalidOperationException($"{typeof(TProtocol).Name} is not registered as a managed protocol; add it with AddManagedProtocol.");
             TaskCompletionSource<IManagedProtocolComm<TOut>> completion = adapter.BeginDial();
-            context.SubDialRequests.Add(new ChannelRequest
+            connection.SubDialRequests.Add(new ChannelRequest
             {
                 SubProtocol = adapter,
                 CompletionSource = new TaskCompletionSource(),

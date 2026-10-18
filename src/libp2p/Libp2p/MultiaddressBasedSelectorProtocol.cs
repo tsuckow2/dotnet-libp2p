@@ -17,31 +17,31 @@ public class MultiaddressBasedSelectorProtocol(ILoggerFactory? loggerFactory = n
 
     public string Id => "multiaddr-select";
 
-    protected override async Task ConnectAsync(IChannel _, IChannelFactory? channelFactory, IPeerContext context, bool isListener)
+    protected override async Task ConnectAsync(IChannel _, IChannelFactory? channelFactory, IRemotePeerConnection connection, bool isListener)
     {
         IProtocol protocol = null!;
         // TODO: deprecate quic
-        if (context.LocalPeer.Address.Has<QUICv1>())
+        if (connection.LocalPeer.Address.Has<QUICv1>())
         {
             protocol = channelFactory!.SubProtocols.FirstOrDefault(proto => proto.Id == "quic-v1") ?? throw new ApplicationException("QUICv1 is not supported");
         }
-        else if (context.LocalPeer.Address.Has<TCP>())
+        else if (connection.LocalPeer.Address.Has<TCP>())
         {
             protocol = channelFactory!.SubProtocols.FirstOrDefault(proto => proto.Id == "ip-tcp") ?? throw new ApplicationException("TCP is not supported");
         }
-        else if (context.LocalPeer.Address.Has<QUIC>())
+        else if (connection.LocalPeer.Address.Has<QUIC>())
         {
             throw new ApplicationException("QUIC is not supported. Use QUICv1 instead.");
         }
         else
         {
-            throw new NotImplementedException($"No transport protocol found for the given address: {context.LocalPeer.Address}");
+            throw new NotImplementedException($"No transport protocol found for the given address: {connection.LocalPeer.Address}");
         }
 
         _logger?.LogPickedProtocol(protocol.Id, isListener ? "listen" : "dial");
 
         await (isListener
-            ? channelFactory.SubListen(context, protocol)
-            : channelFactory.SubDial(context, protocol));
+            ? channelFactory.SubListen(connection, protocol)
+            : channelFactory.SubDial(connection, protocol));
     }
 }

@@ -22,16 +22,29 @@ public interface IProtocol
     /// </summary>
     /// <param name="downChannel">A channel to communicate with a bottom layer protocol</param>
     /// <param name="upChannelFactory">Factory that spawns new channels used to interact with top layer protocols</param>
-    /// <param name="context">Holds information about local and remote peers</param>
-    Task DialAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IPeerContext context);
+    /// <param name="connection">The connection being established: it carries both peers and the endpoints, so a protocol reads everything it needs about the ends from the connection itself</param>
+    Task DialAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IRemotePeerConnection connection);
 
     /// <summary>
     ///     Opens a channel to listen to a remote peer.
     /// </summary>
     /// <param name="downChannel">A channel to communicate with a bottom layer protocol</param>
     /// <param name="upChannelFactory">Factory that spawns new channels used to interact with top layer protocols</param>
-    /// <param name="context">Holds information about local and remote peers</param>
-    Task ListenAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IPeerContext context);
+    /// <param name="connection">The connection being established (for a listening transport, a shell carrying the local peer, one per listener; transports create the per-connection objects through the channel factory)</param>
+    Task ListenAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IRemotePeerConnection connection);
+}
+
+/// <summary>
+///     A selector protocol (multistream) that can be told to propose one
+///     specific protocol instead of trying each of its sub-protocols in
+///     turn. When a muxer opens a stream for a specific sub-dial request,
+///     the request cannot ride the connection — streams over one
+///     connection are concurrent — so the channel factory dials through
+///     a per-stream instance of the selector carrying the request here.
+/// </summary>
+public interface ISpecificProtocolSelector : IProtocol
+{
+    IChannelRequest? SpecificRequest { get; set; }
 }
 
 /// <summary>

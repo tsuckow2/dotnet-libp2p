@@ -14,12 +14,12 @@ public class ChannelsBenchmark
     //{
     //    public string Id => "";
 
-    //    public Task DialAsync(IChannel downChannel, IChannelFactory upChannelFactory, IPeerContext context)
+    //    public Task DialAsync(IChannel downChannel, IChannelFactory upChannelFactory, IRemotePeerConnection connection)
     //    {
     //        throw new System.NotImplementedException();
     //    }
 
-    //    public Task ListenAsync(IChannel downChannel, IChannelFactory upChannelFactory, IPeerContext context)
+    //    public Task ListenAsync(IChannel downChannel, IChannelFactory upChannelFactory, IRemotePeerConnection connection)
     //    {
     //        throw new System.NotImplementedException();
     //    }

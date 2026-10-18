@@ -16,7 +16,7 @@ namespace Nethermind.Libp2p.Core;
 ///     is bound, on both sides, so the adapter hands the channel
 ///     straight to the protocol — no second negotiation.
 /// </summary>
-internal class ManagedProtocolAdapter<TProtocol, TOut>(IServiceProvider serviceProvider, ConnectionRegistry connectionRegistry)
+internal class ManagedProtocolAdapter<TProtocol, TOut>(IServiceProvider serviceProvider)
     : IProtocol where TProtocol : IProtocol<TOut>
 {
     private TProtocol? _protocol;
@@ -30,8 +30,9 @@ internal class ManagedProtocolAdapter<TProtocol, TOut>(IServiceProvider serviceP
     ///     Registers a dial the switch is about to queue for this protocol
     ///     and returns the completion the dialer awaits. Dials complete in
     ///     queue order (the muxer consumes sub-dial requests sequentially).
-    ///     The completion cannot travel on the context: multistream clears
-    ///     SpecificProtocolRequest before binding the selected protocol.
+    ///     The completion cannot travel on the connection or the request:
+    ///     multistream clears the selector's SpecificRequest before
+    ///     binding the selected protocol.
     /// </summary>
     public TaskCompletionSource<IManagedProtocolComm<TOut>> BeginDial()
     {
@@ -40,12 +41,11 @@ internal class ManagedProtocolAdapter<TProtocol, TOut>(IServiceProvider serviceP
         return completion;
     }
 
-    public async Task DialAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IPeerContext context)
+    public async Task DialAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IRemotePeerConnection connection)
     {
         _pendingDials.TryDequeue(out TaskCompletionSource<IManagedProtocolComm<TOut>>? completion);
         try
         {
-            IRemotePeerConnection connection = GetConnection(context);
             IManagedRemoteComm comm = new GenericManagedRemoteComm(false, downChannel, connection.TransportConnection, connection.Managed);
             IManagedProtocolComm<TOut> result = await Protocol.DialAsync(comm);
             completion?.TrySetResult(result);
@@ -64,21 +64,13 @@ internal class ManagedProtocolAdapter<TProtocol, TOut>(IServiceProvider serviceP
         await downChannel;
     }
 
-    public async Task ListenAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IPeerContext context)
+    public async Task ListenAsync(IChannel downChannel, IChannelFactory? upChannelFactory, IRemotePeerConnection connection)
     {
-        IRemotePeerConnection connection = GetConnection(context);
-
         IManagedRemoteComm comm = new GenericManagedRemoteComm(true, downChannel, connection.TransportConnection, connection.Managed);
         await Protocol.ListenAsync(comm);
 
         // Same lifetime bridge as the dial side: keep the channel open
         // for the session the comm started.
         await downChannel;
-    }
-
-    private IRemotePeerConnection GetConnection(IPeerContext context)
-    {
-        return connectionRegistry.Get(context)
-            ?? throw new InvalidOperationException($"No connection registered for context {context.Id}; the switch creates connections when the muxer reports Connected.");
     }
 }

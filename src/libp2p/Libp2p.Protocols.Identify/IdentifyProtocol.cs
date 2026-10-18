@@ -41,23 +41,23 @@ public class IdentifyProtocol : IIdentityProtocol
     public string Id => "/ipfs/id/1.0.0";
 
     public async Task DialAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context)
+        IRemotePeerConnection connection)
     {
         _logger?.LogInformation("Dial");
 
         Identify.Dto.Identify identity = await channel.ReadPrefixedProtobufAsync(Identify.Dto.Identify.Parser);
 
         _logger?.LogInformation("Received peer info: {identify}", identity);
-        context.RemotePeer.Identity = new Identity(PublicKey.Parser.ParseFrom(identity.PublicKey));
+        connection.RemotePeer.Identity = new Identity(PublicKey.Parser.ParseFrom(identity.PublicKey));
 
-        if (context.RemotePeer.Identity.PublicKey.ToByteString() != identity.PublicKey)
+        if (connection.RemotePeer.Identity.PublicKey.ToByteString() != identity.PublicKey)
         {
             throw new PeerConnectionException();
         }
     }
 
     public async Task ListenAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context)
+        IRemotePeerConnection connection)
     {
         _logger?.LogInformation("Listen");
 
@@ -65,9 +65,9 @@ public class IdentifyProtocol : IIdentityProtocol
         {
             ProtocolVersion = _protocolVersion,
             AgentVersion = _agentVersion,
-            PublicKey = context.LocalPeer.Identity.PublicKey.ToByteString(),
-            ListenAddrs = { ByteString.CopyFrom(context.LocalEndpoint.ToBytes()) },
-            ObservedAddr = ByteString.CopyFrom(context.RemoteEndpoint.ToBytes()),
+            PublicKey = connection.LocalPeer.Identity.PublicKey.ToByteString(),
+            ListenAddrs = { ByteString.CopyFrom(connection.LocalEndpoint!.ToBytes()) },
+            ObservedAddr = ByteString.CopyFrom(connection.RemoteEndpoint!.ToBytes()),
             Protocols = { PeerFactoryBuilder.AppLayerProtocols.Select(p => p.Id) }
         };
         byte[] ar = new byte[identify.CalculateSize()];

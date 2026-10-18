@@ -18,7 +18,7 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
 {
     public string Id => KadDht.ProtocolId;
 
-    public async Task DialAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    public async Task DialAsync(IChannel channel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
         if (client is null)
         {
@@ -31,7 +31,7 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
         // the claim: for hashed peer ids (e.g. RSA) it is still the
         // switch's placeholder at this point.
         KadJob? job = null;
-        foreach (string candidate in context.RemotePeer.Addresses.Keys
+        foreach (string candidate in connection.RemotePeer.Addresses.Keys
                      .Select(addr => addr.Get<P2P>()?.ToString())
                      .Where(id => id is not null)
                      .Distinct())
@@ -43,11 +43,11 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
             }
         }
 
-        job ??= client.ClaimJob(context.RemotePeer.Identity.PeerId.Bytes);
+        job ??= client.ClaimJob(connection.RemotePeer.Identity.PeerId.Bytes);
         if (job is null)
         {
             throw new InvalidOperationException(
-                $"A DHT query stream to {context.RemotePeer.Identity.PeerId} was opened without a queued query.");
+                $"A DHT query stream to {connection.RemotePeer.Identity.PeerId} was opened without a queued query.");
         }
 
         try
@@ -63,7 +63,7 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
         }
     }
 
-    public async Task ListenAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    public async Task ListenAsync(IChannel channel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
         Message request = await KadWire.ReadMessageAsync(channel);
         await KadWire.WriteMessageAsync(channel, Answer(request));

@@ -26,10 +26,10 @@ public abstract class PubsubProtocol : IProtocol
     }
 
     public async Task DialAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context)
+        IRemotePeerConnection connection)
     {
-        string peerId = context.RemotePeer.Address.Get<P2P>().ToString()!;
-        _logger?.LogDebug($"Dialed({context.Id}) {context.RemotePeer.Address}");
+        string peerId = connection.RemotePeer.Address.Get<P2P>().ToString()!;
+        _logger?.LogDebug($"Dialed{connection.RemotePeer.Address}");
 
         CancellationToken token = router.OutboundConnection(peerId, Id, (rpc) =>
         {
@@ -44,26 +44,26 @@ public abstract class PubsubProtocol : IProtocol
         {
 
         }
-        _logger?.LogDebug($"Finished dial({context.Id}) {context.RemotePeer.Address}");
+        _logger?.LogDebug($"Finished dial{connection.RemotePeer.Address}");
 
     }
 
     public async Task ListenAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context)
+        IRemotePeerConnection connection)
     {
-        string peerId = context.RemotePeer.Address.Get<P2P>().ToString()!;
-        _logger?.LogDebug($"Listen({context.Id}) to {context.RemotePeer.Address}");
+        string peerId = connection.RemotePeer.Address.Get<P2P>().ToString()!;
+        _logger?.LogDebug($"Listento {connection.RemotePeer.Address}");
 
         CancellationToken token = router.InboundConnection(peerId, Id, () =>
         {
-            context.SubDialRequests.Add(new ChannelRequest { SubProtocol = this });
+            connection.SubDialRequests.Add(new ChannelRequest { SubProtocol = this });
         });
         while (!token.IsCancellationRequested)
         {
             Rpc? rpc = await channel.ReadPrefixedProtobufAsync(Rpc.Parser, token);
             router.OnRpc(peerId, rpc);
         }
-        _logger?.LogDebug($"Finished({context.Id}) list {context.RemotePeer.Address}");
+        _logger?.LogDebug($"Finishedlist {connection.RemotePeer.Address}");
     }
 }
 

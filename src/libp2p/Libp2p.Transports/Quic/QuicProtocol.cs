@@ -43,7 +43,7 @@ public class QuicProtocol : IProtocol, ITransport
 
     public string Id => "quic-v1";
 
-    public async Task ListenAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IPeerContext context)
+    public async Task ListenAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection peerConnection)
     {
         if (channelFactory is null)
         {
@@ -55,7 +55,7 @@ public class QuicProtocol : IProtocol, ITransport
             throw new NotSupportedException("QUIC is not supported, check for presence of libmsquic and support of TLS 1.3.");
         }
 
-        Multiaddress addr = context.LocalPeer.Address;
+        Multiaddress addr = peerConnection.LocalPeer.Address;
         MultiaddressProtocol ipProtocol = addr.Has<IP4>() ? addr.Get<IP4>() : addr.Get<IP6>();
         IPAddress ipAddress = IPAddress.Parse(ipProtocol.ToString());
         int udpPort = int.Parse(addr.Get<UDP>().ToString());
@@ -70,8 +70,8 @@ public class QuicProtocol : IProtocol, ITransport
             ServerAuthenticationOptions = new SslServerAuthenticationOptions
             {
                 ApplicationProtocols = protocols,
-                RemoteCertificateValidationCallback = (_, c, _, _) => VerifyRemoteCertificate(context.RemotePeer, c),
-                ServerCertificate = CertificateHelper.CertificateFromIdentity(_sessionKey, context.LocalPeer.Identity)
+                RemoteCertificateValidationCallback = (_, c, _, _) => VerifyRemoteCertificate(peerConnection.RemotePeer, c),
+                ServerCertificate = CertificateHelper.CertificateFromIdentity(_sessionKey, peerConnection.LocalPeer.Identity)
             },
         };
 
@@ -90,18 +90,18 @@ public class QuicProtocol : IProtocol, ITransport
         // UDP
         localEndPoint = localEndPoint.Add<UDP>(listener.LocalEndPoint.Port);
 
-        // Set on context
-        context.LocalEndpoint = localEndPoint;
+        // Set on the connection
+        peerConnection.LocalEndpoint = localEndPoint;
 
         if (udpPort == 0)
         {
-            context.LocalPeer.Address = context.LocalPeer.Address
+            peerConnection.LocalPeer.Address = peerConnection.LocalPeer.Address
                 .ReplaceOrAdd<UDP>(listener.LocalEndPoint.Port);
         }
 
 
         _logger?.ReadyToHandleConnections();
-        context.ListenerReady();
+        peerConnection.ListenerReady();
         TaskAwaiter signalingWawaiter = singalingChannel.GetAwaiter();
 
         signalingWawaiter.OnCompleted(() =>
@@ -114,7 +114,7 @@ public class QuicProtocol : IProtocol, ITransport
             try
             {
                 QuicConnection connection = await listener.AcceptConnectionAsync();
-                _ = ProcessStreams(connection, context.Fork(), channelFactory);
+                _ = ProcessStreams(connection, channelFactory.AcceptConnection(), channelFactory);
             }
             catch (Exception ex)
             {
@@ -124,7 +124,7 @@ public class QuicProtocol : IProtocol, ITransport
         }
     }
 
-    public async Task DialAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IPeerContext context)
+    public async Task DialAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection peerConnection)
     {
         if (channelFactory is null)
         {
@@ -141,7 +141,7 @@ public class QuicProtocol : IProtocol, ITransport
         // peer's address, which is the peer's LISTEN address — a
         // TCP one in any node that never configured QUIC listening —
         // and died on its missing UDP part.)
-        Multiaddress addr = context.RemotePeer.Address;
+        Multiaddress addr = peerConnection.RemotePeer.Address;
         IPAddress ipAddress = await MultiaddressEndpoint.ResolveIpAsync(addr);
         int udpPort = int.Parse(addr.Get<UDP>().ToString()!);
 
@@ -160,8 +160,8 @@ public class QuicProtocol : IProtocol, ITransport
             {
                 TargetHost = null,
                 ApplicationProtocols = protocols,
-                RemoteCertificateValidationCallback = (_, c, _, _) => VerifyRemoteCertificate(context.RemotePeer, c),
-                ClientCertificates = new X509CertificateCollection { CertificateHelper.CertificateFromIdentity(_sessionKey, context.LocalPeer.Identity) },
+                RemoteCertificateValidationCallback = (_, c, _, _) => VerifyRemoteCertificate(peerConnection.RemotePeer, c),
+                ClientCertificates = new X509CertificateCollection { CertificateHelper.CertificateFromIdentity(_sessionKey, peerConnection.LocalPeer.Identity) },
             },
             RemoteEndPoint = remoteEndpoint,
         };
@@ -175,7 +175,7 @@ public class QuicProtocol : IProtocol, ITransport
             connection.CloseAsync(0);
         });
 
-        await ProcessStreams(connection, context, channelFactory);
+        await ProcessStreams(connection, peerConnection, channelFactory);
     }
 
     private static bool VerifyRemoteCertificate(IPeer? remotePeer, X509Certificate certificate) =>
@@ -184,7 +184,7 @@ public class QuicProtocol : IProtocol, ITransport
     // ---- ITransport: the raw comm shape, one stream per comm ------------
     //
     // The stack path above binds the QUIC certificate to the peers'
-    // identities. The standalone transport has no peer context, so it
+    // identities. The standalone transport has no stack connection, so it
     // presents an ephemeral identity and accepts any libp2p certificate:
     // a raw pipe, with identity binding left to the layers above it —
     // the same contract IpTcpProtocol's ITransport methods offer.
@@ -285,7 +285,7 @@ public class QuicProtocol : IProtocol, ITransport
         }
     }
 
-    private async Task ProcessStreams(QuicConnection connection, IPeerContext context, IChannelFactory channelFactory, CancellationToken token = default)
+    private async Task ProcessStreams(QuicConnection connection, IRemotePeerConnection peerConnection, IChannelFactory channelFactory, CancellationToken token = default)
     {
         _logger?.LogDebug("New connection to {remote}", connection.RemoteEndPoint);
 
@@ -296,9 +296,9 @@ public class QuicProtocol : IProtocol, ITransport
         localEndPointMultiaddress = isIP4 ? localEndPointMultiaddress.Add<IP4>(strLocalEndpointAddress) : localEndPointMultiaddress.Add<IP6>(strLocalEndpointAddress);
         localEndPointMultiaddress = localEndPointMultiaddress.Add<UDP>(connection.LocalEndPoint.Port);
 
-        context.LocalEndpoint = localEndPointMultiaddress;
+        peerConnection.LocalEndpoint = localEndPointMultiaddress;
 
-        context.LocalPeer.Address = isIP4 ? context.LocalPeer.Address.ReplaceOrAdd<IP4>(strLocalEndpointAddress) : context.LocalPeer.Address.ReplaceOrAdd<IP6>(strLocalEndpointAddress);
+        peerConnection.LocalPeer.Address = isIP4 ? peerConnection.LocalPeer.Address.ReplaceOrAdd<IP4>(strLocalEndpointAddress) : peerConnection.LocalPeer.Address.ReplaceOrAdd<IP6>(strLocalEndpointAddress);
 
         IPEndPoint remoteIpEndpoint = connection.RemoteEndPoint!;
         isIP4 = remoteIpEndpoint.AddressFamily == AddressFamily.InterNetwork;
@@ -308,18 +308,16 @@ public class QuicProtocol : IProtocol, ITransport
         remoteEndPointMultiaddress = isIP4 ? remoteEndPointMultiaddress.Add<IP4>(strRemoteEndpointAddress) : remoteEndPointMultiaddress.Add<IP6>(strRemoteEndpointAddress);
         remoteEndPointMultiaddress = remoteEndPointMultiaddress.Add<UDP>(remoteIpEndpoint.Port);
 
-        context.RemoteEndpoint = remoteEndPointMultiaddress;
+        peerConnection.RemoteEndpoint = remoteEndPointMultiaddress;
 
-        context.Connected(context.RemotePeer);
+        peerConnection.Connected();
 
         _ = Task.Run(async () =>
         {
-            foreach (IChannelRequest request in context.SubDialRequests.GetConsumingEnumerable())
+            foreach (IChannelRequest request in peerConnection.SubDialRequests.GetConsumingEnumerable())
             {
                 QuicStream stream = await connection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
-                IPeerContext dialContext = context.Fork();
-                dialContext.SpecificProtocolRequest = request;
-                IChannel upChannel = channelFactory.SubDial(dialContext);
+                IChannel upChannel = channelFactory.SubDialForRequest(peerConnection, request);
                 ExchangeData(stream, upChannel, request.CompletionSource);
             }
         }, token);
@@ -327,7 +325,7 @@ public class QuicProtocol : IProtocol, ITransport
         while (!token.IsCancellationRequested)
         {
             QuicStream inboundStream = await connection.AcceptInboundStreamAsync(token);
-            IChannel upChannel = channelFactory.SubListen(context);
+            IChannel upChannel = channelFactory.SubListen(peerConnection);
             ExchangeData(inboundStream, upChannel, null);
         }
     }

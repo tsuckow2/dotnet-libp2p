@@ -11,12 +11,10 @@ namespace Nethermind.Libp2p.Core;
 
 public class ManagedPeerSwitch : IManagedPeerSwitch
 {
-    private static int CtxId;
 
     private readonly ILocalPeer _localPeer;
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IServiceProvider _serviceProvider;
-    private readonly ConnectionRegistry _connectionRegistry = new();
     private readonly IReadOnlyList<IProtocol> _managedAdapters;
     private readonly ConcurrentDictionary<Identity, IRemotePeer> _remotePeers = new();
 
@@ -35,13 +33,13 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         ILocalPeer localPeer,
         IProtocolRegistry protocolRegistry,
         IServiceProvider serviceProvider,
-        IEnumerable<Func<ConnectionRegistry, IProtocol>>? managedAdapterFactories)
+        IEnumerable<Func<IProtocol>>? managedAdapterFactories)
     {
         _localPeer = localPeer;
         _protocolRegistry = protocolRegistry;
         _serviceProvider = serviceProvider;
         _managedAdapters = (managedAdapterFactories ?? [])
-            .Select(factory => factory(_connectionRegistry))
+            .Select(factory => factory())
             .ToList();
     }
 
@@ -143,33 +141,36 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
     }
 
     // ---- connection bookkeeping -----------------------------------------
+    //
+    // The switch creates the connection object before the stack runs and
+    // hands it down the layers as the stack's one parameter: transports
+    // fill in its endpoints, the muxer reports establishment through
+    // Connected(), and only then does the connection become visible —
+    // dials complete, listeners raise, and the transport connection is
+    // attached from the endpoint the transport observed.
 
-    private IRemotePeerConnection RegisterConnection(PeerContext context, IRemotePeer remotePeer, Channel signalingChannel, bool isDialer)
+    private RemotePeerConnection CreateStackConnection(
+        ILocalPeer localPeer, IRemotePeer remotePeer, Func<Task> disconnect,
+        Action<RemotePeerConnection> onConnected)
     {
-        if (_connectionRegistry.Get(context) is { } existing)
-        {
-            return existing;
-        }
-
-        var transportConnection = new GenericRemoteConnection(
-            context.RemoteEndpoint ?? remotePeer.Address,
-            isDialer
-                ? () => { _connectionRegistry.Remove(context.ConnectionId); return signalingChannel.CloseAsync().AsTask(); }
-                : () => { _connectionRegistry.Remove(context.ConnectionId); return Task.CompletedTask; });
-
         var connection = new RemotePeerConnection(
-            remotePeer, transportConnection, transportConnection.DisconnectAsync,
-            _serviceProvider, _connectionRegistry, context, managedAdapters: _managedAdapters);
-        _connectionRegistry.Register(context.ConnectionId, connection);
-        _remotePeers[remotePeer.Identity] = remotePeer;
+            localPeer, remotePeer, disconnect, _serviceProvider,
+            managedAdapters: _managedAdapters, isStackConnection: true);
+        connection.ConnectedCallback = () =>
+        {
+            connection.TransportConnection = new GenericRemoteConnection(
+                connection.RemoteEndpoint ?? remotePeer.Address, disconnect);
+            _remotePeers[remotePeer.Identity] = remotePeer;
+            onConnected(connection);
+        };
         return connection;
     }
 
-    private void DialIdentityProtocols(PeerContext context)
+    private void DialIdentityProtocols(RemotePeerConnection connection)
     {
         foreach (IProtocol identityProtocol in _protocolRegistry.IdentityProtocols)
         {
-            context.SubDialRequests.Add(new ChannelRequest
+            connection.SubDialRequests.Add(new ChannelRequest
             {
                 SubProtocol = identityProtocol,
                 CompletionSource = new TaskCompletionSource(),
@@ -197,24 +198,27 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         Channel signalingChannel = new();
         token.Register(() => _ = signalingChannel.CloseAsync());
 
-        PeerContext context = new()
-        {
-            Id = $"ctx-{Interlocked.Increment(ref CtxId)}",
-            ConnectionId = Guid.NewGuid(),
-            LocalPeer = localPeer,
-            RemotePeer = new RemotePeer(new Identity()),
-        };
-
+        // The listener's shell connection: it carries the local peer
+        // down to the transport, which reports readiness through it.
+        // The connections for accepted transports are created per
+        // accept through the root factory, each with its own anonymous
+        // remote peer (Identify names it during the handshake).
         var listener = new SwitchListener(signalingChannel, localPeer);
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        context.OnListenerReady += () => ready.TrySetResult();
-        context.OnRemotePeerConnection += remotePeer =>
-        {
-            IRemotePeerConnection connection = RegisterConnection(context, remotePeer, signalingChannel, isDialer: false);
-            listener.RaiseOnConnection(connection.RemotePeer);
-        };
 
-        _ = root.ListenAsync(signalingChannel, rootFactory, context)
+        RemotePeerConnection shell = CreateStackConnection(
+            localPeer, new RemotePeer(new Identity()),
+            disconnect: () => Task.CompletedTask,
+            onConnected: _ => { });
+        shell.ListenerReadyCallback = () => ready.TrySetResult();
+
+        ((ChannelFactory)rootFactory).ConnectionFactory = () =>
+            CreateStackConnection(
+                localPeer, new RemotePeer(new Identity()),
+                disconnect: () => Task.CompletedTask,
+                onConnected: connection => listener.RaiseOnConnection(connection.RemotePeer));
+
+        _ = root.ListenAsync(signalingChannel, rootFactory, shell)
             .ContinueWith(task =>
             {
                 if (task.IsFaulted)
@@ -321,27 +325,22 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         Channel signalingChannel = new();
         token.Register(() => _ = signalingChannel.CloseAsync());
 
-        PeerContext context = new()
-        {
-            Id = $"ctx-{Interlocked.Increment(ref CtxId)}",
-            ConnectionId = Guid.NewGuid(),
-            LocalPeer = fromPeer,
-            RemotePeer = remotePeer,
-        };
         if (remotePeer is RemotePeer concreteRemote)
         {
             concreteRemote.Address = addr;
         }
 
         var connected = new TaskCompletionSource<IRemotePeerConnection>(TaskCreationOptions.RunContinuationsAsynchronously);
-        context.OnRemotePeerConnection += connectedPeer =>
-        {
-            IRemotePeerConnection connection = RegisterConnection(context, connectedPeer, signalingChannel, isDialer: true);
-            DialIdentityProtocols(context);
-            connected.TrySetResult(connection);
-        };
+        RemotePeerConnection connection = CreateStackConnection(
+            fromPeer, remotePeer,
+            disconnect: () => signalingChannel.CloseAsync().AsTask(),
+            onConnected: conn =>
+            {
+                DialIdentityProtocols(conn);
+                connected.TrySetResult(conn);
+            });
 
-        _ = root.DialAsync(signalingChannel, rootFactory, context)
+        _ = root.DialAsync(signalingChannel, rootFactory, connection)
             .ContinueWith(task =>
             {
                 // A stack that ends without reporting Connected has failed

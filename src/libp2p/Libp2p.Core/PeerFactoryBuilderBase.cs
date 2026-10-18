@@ -28,7 +28,7 @@ public abstract class PeerFactoryBuilderBase<TBuilder> : IPeerFactoryBuilder
     private readonly List<ISecurityProtocol> _securityProtocols = [];
     private readonly List<IIdentityProtocol> _identityProtocols = [];
     private readonly List<IProtocol> _appLayerProtocols = [];
-    private readonly List<Func<ConnectionRegistry, IProtocol>> _managedAdapterFactories = [];
+    private readonly List<Func<IProtocol>> _managedAdapterFactories = [];
 
     protected PeerFactoryBuilderBase(IServiceProvider? serviceProvider = default)
     {
@@ -78,7 +78,7 @@ public abstract class PeerFactoryBuilderBase<TBuilder> : IPeerFactoryBuilder
     {
         // The switch owns the connection registry the adapter needs, so
         // registration stores a factory for it rather than the adapter.
-        _managedAdapterFactories.Add(registry => new ManagedProtocolAdapter<TProtocol, TOut>(ServiceProvider, registry));
+        _managedAdapterFactories.Add(() => new ManagedProtocolAdapter<TProtocol, TOut>(ServiceProvider));
         return this;
     }
 

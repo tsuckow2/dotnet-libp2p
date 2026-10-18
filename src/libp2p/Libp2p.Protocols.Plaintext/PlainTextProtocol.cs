@@ -15,12 +15,12 @@ public class PlainTextProtocol : SymmetricProtocol, ISecurityProtocol
     public string Id => "/plaintext/2.0.0";
 
     protected override async Task ConnectAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context, bool isListener)
+        IRemotePeerConnection connection, bool isListener)
     {
         Exchange src = new()
         {
-            Id = ByteString.CopyFrom(context.LocalPeer.Identity.PeerId.Bytes),
-            Pubkey = context.LocalPeer.Identity.PublicKey.ToByteString()
+            Id = ByteString.CopyFrom(connection.LocalPeer.Identity.PeerId.Bytes),
+            Pubkey = connection.LocalPeer.Identity.PublicKey.ToByteString()
         };
         int size = src.CalculateSize();
         int sizeOfSize = VarInt.GetSizeInBytes(size);
@@ -36,7 +36,7 @@ public class PlainTextProtocol : SymmetricProtocol, ISecurityProtocol
         Exchange? dest = Exchange.Parser.ParseFrom(buf);
 
         await (isListener
-            ? channelFactory.SubListenAndBind(channel, context)
-            : channelFactory.SubDialAndBind(channel, context));
+            ? channelFactory.SubListenAndBind(channel, connection)
+            : channelFactory.SubDialAndBind(channel, connection));
     }
 }

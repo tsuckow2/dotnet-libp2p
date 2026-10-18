@@ -24,6 +24,19 @@ public class ChannelFactory : IChannelFactory
     public IEnumerable<IProtocol> SubProtocols => _factories.Keys;
 
     /// <summary>
+    ///     Installed by the switch on a listen chain's root factory:
+    ///     creates the connection for a newly accepted transport
+    ///     connection, wired to that listener.
+    /// </summary>
+    internal Func<IRemotePeerConnection>? ConnectionFactory { get; set; }
+
+    public IRemotePeerConnection AcceptConnection()
+    {
+        return ConnectionFactory?.Invoke()
+            ?? throw new InvalidOperationException("Only a listen chain's root factory can create connections for accepted transports.");
+    }
+
+    /// <summary>
     ///     The factory above a protocol: found by instance when the
     ///     protocol is one of this factory's own (a stack layer), else
     ///     by protocol id — a per-connection dial carries an instance
@@ -60,14 +73,13 @@ public class ChannelFactory : IChannelFactory
         }
     }
 
-    public IChannel SubDial(IPeerContext context, IChannelRequest? req = null)
+    public IChannel SubDial(IRemotePeerConnection connection, IChannelRequest? req = null)
     {
         IProtocol? subProtocol = req?.SubProtocol ?? SubProtocols.FirstOrDefault();
         Channel channel = new();
         ChannelFactory? channelFactory = FactoryFor(subProtocol);
 
-
-        _ = subProtocol.DialAsync(channel.Reverse, channelFactory, context)
+        _ = subProtocol.DialAsync(channel.Reverse, channelFactory, connection)
             .ContinueWith(async task =>
             {
                 if (!task.IsCompletedSuccessfully)
@@ -82,14 +94,49 @@ public class ChannelFactory : IChannelFactory
         return channel;
     }
 
-    public IChannel SubListen(IPeerContext context, IChannelRequest? req = null)
+    public IChannel SubDialForRequest(IRemotePeerConnection connection, IChannelRequest req)
+    {
+        // A muxer opening a stream for a queued sub-dial request: dial
+        // the layer above the muxer (the selector), telling it to
+        // propose just the requested protocol. The request cannot ride
+        // the connection — streams over one connection are concurrent —
+        // so a selector that supports it is dialed through a per-stream
+        // instance carrying the request. The muxer completes the
+        // request itself when the stream channel closes, as it always
+        // has; this method deliberately does not.
+        IProtocol? subProtocol = SubProtocols.FirstOrDefault();
+        Channel channel = new();
+        ChannelFactory? channelFactory = FactoryFor(subProtocol);
+
+        IProtocol dialProtocol = subProtocol;
+        if (subProtocol is ISpecificProtocolSelector)
+        {
+            dialProtocol = (IProtocol)ActivatorUtilities.CreateInstance(_serviceProvider, subProtocol.GetType());
+            ((ISpecificProtocolSelector)dialProtocol).SpecificRequest = req;
+            channelFactory = FactoryFor(dialProtocol) ?? channelFactory;
+        }
+
+        _ = dialProtocol.DialAsync(channel.Reverse, channelFactory, connection)
+            .ContinueWith(async task =>
+            {
+                if (!task.IsCompletedSuccessfully)
+                {
+                    _logger?.DialFailed(dialProtocol.Id, task.Exception, task.Exception.GetErrorMessage());
+                }
+                await channel.CloseAsync();
+            });
+
+        return channel;
+    }
+
+    public IChannel SubListen(IRemotePeerConnection connection, IChannelRequest? req = null)
     {
         IProtocol? subProtocol = req?.SubProtocol ?? SubProtocols.FirstOrDefault();
         Channel channel = new();
         ChannelFactory? channelFactory = FactoryFor(subProtocol);
 
 
-        _ = subProtocol.ListenAsync(channel.Reverse, channelFactory, context)
+        _ = subProtocol.ListenAsync(channel.Reverse, channelFactory, connection)
             .ContinueWith(async task =>
             {
                 if (!task.IsCompletedSuccessfully)
@@ -104,13 +151,13 @@ public class ChannelFactory : IChannelFactory
         return channel;
     }
 
-    public Task SubDialAndBind(IChannel parent, IPeerContext context,
+    public Task SubDialAndBind(IChannel parent, IRemotePeerConnection connection,
         IChannelRequest? req = null)
     {
         IProtocol? subProtocol = req?.SubProtocol ?? SubProtocols.FirstOrDefault();
         ChannelFactory? channelFactory = FactoryFor(subProtocol);
 
-        return subProtocol.DialAsync(((Channel)parent), channelFactory, context)
+        return subProtocol.DialAsync(((Channel)parent), channelFactory, connection)
             .ContinueWith(async task =>
             {
                 if (!task.IsCompletedSuccessfully)
@@ -123,13 +170,13 @@ public class ChannelFactory : IChannelFactory
             });
     }
 
-    public Task SubListenAndBind(IChannel parent, IPeerContext context,
+    public Task SubListenAndBind(IChannel parent, IRemotePeerConnection connection,
         IChannelRequest? req = null)
     {
         IProtocol? subProtocol = req?.SubProtocol ?? SubProtocols.FirstOrDefault();
         ChannelFactory? channelFactory = FactoryFor(subProtocol);
 
-        return subProtocol.ListenAsync(((Channel)parent), channelFactory, context)
+        return subProtocol.ListenAsync(((Channel)parent), channelFactory, connection)
             .ContinueWith(async task =>
             {
                 if (!task.IsCompletedSuccessfully)

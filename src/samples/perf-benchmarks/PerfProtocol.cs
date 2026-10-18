@@ -21,7 +21,7 @@ public class PerfProtocol : IProtocol
     public const long TotalLoad = 1024L * 1024 * 100;
     private Random rand = new();
 
-    public async Task DialAsync(IChannel downChannel, IChannelFactory upChannelFactory, IPeerContext context)
+    public async Task DialAsync(IChannel downChannel, IChannelFactory upChannelFactory, IRemotePeerConnection connection)
     {
 
         await downChannel.WriteVarintAsync(TotalLoad);
@@ -60,7 +60,7 @@ public class PerfProtocol : IProtocol
         }
     }
 
-    public async Task ListenAsync(IChannel downChannel, IChannelFactory upChannelFactory, IPeerContext context)
+    public async Task ListenAsync(IChannel downChannel, IChannelFactory upChannelFactory, IRemotePeerConnection connection)
     {
         ulong total = await downChannel.ReadVarintUlongAsync();
         ulong bytesRead = 0;

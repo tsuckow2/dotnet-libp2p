@@ -12,13 +12,13 @@ public class NoiseProtocolTests
         // IChannel downChannel = new TestChannel();
         // IChannel downChannelFromProtocolPov = ((TestChannel)downChannel).Reverse();
         // IChannelFactory channelFactory = Substitute.For<IChannelFactory>();
-        // IPeerContext peerContext = Substitute.For<IPeerContext>();
+        // IRemotePeerConnection connection = Substitute.For<IPeerContext>();
         //
         // IProtocol? proto1 = Substitute.For<IProtocol>();
         // proto1.Id.Returns("proto1");
         // channelFactory.SubProtocols.Returns(new[] { proto1 });
         // IChannel upChannel = new TestChannel();
-        // channelFactory.SubDialAndBind(Arg.Any<IChannel>(), Arg.Any<IPeerContext>(), Arg.Any<IProtocol>())
+        // channelFactory.SubDialAndBind(Arg.Any<IChannel>(), Arg.Any<IRemotePeerConnection>(), Arg.Any<IProtocol>())
         //     .Returns(upChannel);
         //
         // NoiseProtocol proto = new();
@@ -38,13 +38,13 @@ public class NoiseProtocolTests
         // IChannel downChannel = new TestChannel();
         // IChannel downChannelFromProtocolPov = ((TestChannel)downChannel).Reverse();
         // IChannelFactory channelFactory = Substitute.For<IChannelFactory>();
-        // IPeerContext peerContext = Substitute.For<IPeerContext>();
+        // IRemotePeerConnection connection = Substitute.For<IPeerContext>();
         //
         // IProtocol? proto1 = Substitute.For<IProtocol>();
         // proto1.Id.Returns("proto1");
         // channelFactory.SubProtocols.Returns(new[] { proto1 });
         // IChannel upChannel = new TestChannel();
-        // channelFactory.SubDialAndBind(Arg.Any<IChannel>(), Arg.Any<IPeerContext>(), Arg.Any<IProtocol>())
+        // channelFactory.SubDialAndBind(Arg.Any<IChannel>(), Arg.Any<IRemotePeerConnection>(), Arg.Any<IProtocol>())
         //     .Returns(upChannel);
         //
         // NoiseProtocol proto = new();

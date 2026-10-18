@@ -9,18 +9,18 @@ namespace Nethermind.Libp2p.Core;
 /// </summary>
 public abstract class SymmetricProtocol
 {
-    public Task DialAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    public Task DialAsync(IChannel channel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
-        return ConnectAsync(channel, channelFactory, context, false);
+        return ConnectAsync(channel, channelFactory, connection, false);
     }
 
-    public Task ListenAsync(IChannel channel, IChannelFactory? channelFactory, IPeerContext context)
+    public Task ListenAsync(IChannel channel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
-        return ConnectAsync(channel, channelFactory, context, true);
+        return ConnectAsync(channel, channelFactory, connection, true);
     }
 
     protected abstract Task ConnectAsync(IChannel channel, IChannelFactory? channelFactory,
-        IPeerContext context, bool isListener);
+        IRemotePeerConnection connection, bool isListener);
 }
 
 /// <summary>
