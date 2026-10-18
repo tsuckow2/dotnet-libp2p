@@ -27,6 +27,10 @@ internal class RemotePeerConnection : IRemotePeerConnection
         Managed = new ManagedPeer(this, serviceProvider, managedAdapters ?? []);
         _disconnect = disconnect;
         _serviceProvider = serviceProvider;
+        if (remotePeer is RemotePeer concretePeer)
+        {
+            concretePeer.IdentityEstablished += (_, previous) => PeerIdentifiedCallback?.Invoke(previous);
+        }
     }
 
     private readonly Func<Task> _disconnect;
@@ -91,6 +95,15 @@ internal class RemotePeerConnection : IRemotePeerConnection
     ///     run when the transport reports it is bound and ready.
     /// </summary>
     internal Action? ListenerReadyCallback { get; set; }
+
+    /// <summary>
+    ///     Installed by the switch on connections it creates: run when
+    ///     the connection's peer is named by a different identity than
+    ///     it started with (Identify, after an anonymous start), with
+    ///     the previous identity as the argument. The switch
+    ///     canonicalizes its peer registry on this signal.
+    /// </summary>
+    internal Action<Identity>? PeerIdentifiedCallback { get; set; }
 
     public void Connected()
     {

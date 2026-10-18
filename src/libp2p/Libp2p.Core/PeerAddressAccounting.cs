@@ -18,4 +18,19 @@ public class PeerAddressAccounting
     {
         Interlocked.Increment(ref _failedDials);
     }
+
+    /// <summary>
+    ///     Raises this count to at least another accounting's: when two
+    ///     peer objects for one identity merge, the failures recorded
+    ///     against an address on either side stay recorded.
+    /// </summary>
+    internal void Absorb(PeerAddressAccounting other)
+    {
+        int otherFailed = other.FailedDials;
+        int current;
+        while ((current = Volatile.Read(ref _failedDials)) < otherFailed)
+        {
+            Interlocked.CompareExchange(ref _failedDials, otherFailed, current);
+        }
+    }
 }

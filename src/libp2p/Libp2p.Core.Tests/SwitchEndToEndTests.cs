@@ -4,6 +4,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Stack;
 
@@ -44,9 +45,9 @@ public class SwitchEndToEndTests
         }
     }
 
-    private static (ServiceProvider Services, IManagedPeerSwitch Switch, LocalPeer Peer) BuildNode()
+    private static (ServiceProvider Services, IManagedPeerSwitch Switch, LocalPeer Peer) BuildNode(Identity? identity = null)
     {
-        var localPeer = new LocalPeer(new Identity());
+        var localPeer = new LocalPeer(identity ?? new Identity());
         localPeer.GetOrAddAddress("/ip4/127.0.0.1/tcp/0");
 
         ServiceProvider services = new ServiceCollection()
@@ -132,6 +133,85 @@ public class SwitchEndToEndTests
         Assert.That(first.RemotePeer.Identity, Is.EqualTo(listenerNode.Peer.Identity));
 
         await first.DisconnectAsync();
+        await second.DisconnectAsync();
+        await listener.DisconnectAsync();
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition, CancellationToken token)
+    {
+        // Identify runs after the dial completes; poll briefly for its
+        // effect instead of sleeping a fixed span.
+        for (int i = 0; i < 100 && !condition(); i++)
+        {
+            await Task.Delay(100, token);
+        }
+        Assert.That(condition(), Is.True, "The condition was not met within 10 s.");
+    }
+
+    [Test]
+    public async Task DialWithoutPeerId_IdentifyNamesThePeer_AndItBecomesCanonical()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        // An RSA listener: its peer id is a hash of the key, so even a
+        // /p2p-carrying address could not seed the identity — and this
+        // dial does not carry one at all. The peer starts anonymous.
+        var listenerNode = BuildNode(new Identity(keyType: KeyType.Rsa));
+        var dialerNode = BuildNode();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+        string full = listener.Address.ToString();
+        Multiaddress bareAddress = full[..full.IndexOf("/p2p/", StringComparison.Ordinal)];
+
+        IRemotePeerConnection connection = await dialerNode.Switch.DialAsync(bareAddress, cts.Token);
+        Assert.That(connection.RemotePeer.Identity, Is.Not.EqualTo(listenerNode.Peer.Identity));
+
+        // Identify names the peer on the connection; the switch adopts
+        // that very object as the canonical peer for the identity.
+        await WaitForAsync(
+            () => connection.RemotePeer.Identity.Equals(listenerNode.Peer.Identity),
+            cts.Token);
+        Assert.That(
+            ((ManagedPeerSwitch)dialerNode.Switch).RemotePeers.TryGetValue(listenerNode.Peer.Identity, out IRemotePeer? canonical)
+                && ReferenceEquals(canonical, connection.RemotePeer),
+            Is.True);
+
+        await connection.DisconnectAsync();
+        await listener.DisconnectAsync();
+    }
+
+    [Test]
+    public async Task AnonymousDial_AfterIdentifiedDial_MergesIntoTheCanonicalPeer()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode(new Identity(keyType: KeyType.Rsa));
+        var dialerNode = BuildNode();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+        string full = listener.Address.ToString();
+        Multiaddress bareAddress = full[..full.IndexOf("/p2p/", StringComparison.Ordinal)];
+
+        // First contact WITH the /p2p address is still anonymous for an
+        // RSA peer (hashed id), but a second, bare dial must not split
+        // the peer: whichever object Identify names first becomes
+        // canonical, and the other connection folds into it.
+        IRemotePeerConnection first = await dialerNode.Switch.DialAsync(listener.Address, cts.Token);
+        await WaitForAsync(
+            () => first.RemotePeer.Identity.Equals(listenerNode.Peer.Identity),
+            cts.Token);
+        IRemotePeer canonical = first.RemotePeer;
+        await first.DisconnectAsync();
+
+        IRemotePeerConnection second = await dialerNode.Switch.DialAsync(bareAddress, cts.Token);
+        await WaitForAsync(
+            () => ReferenceEquals(second.RemotePeer, canonical),
+            cts.Token);
+
+        // The bare address, known only to the second (folded) peer
+        // object, is in the canonical peer's address book now.
+        Assert.That(canonical.Addresses.ContainsKey(bareAddress), Is.True);
+
         await second.DisconnectAsync();
         await listener.DisconnectAsync();
     }

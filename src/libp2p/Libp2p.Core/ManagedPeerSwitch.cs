@@ -151,7 +151,7 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     private RemotePeerConnection CreateStackConnection(
         ILocalPeer localPeer, IRemotePeer remotePeer, Func<Task> disconnect,
-        Action<RemotePeerConnection> onConnected)
+        Action<RemotePeerConnection> onConnected, bool anonymousPeer = false)
     {
         var connection = new RemotePeerConnection(
             localPeer, remotePeer, disconnect, _serviceProvider,
@@ -160,10 +160,53 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         {
             connection.TransportConnection = new GenericRemoteConnection(
                 connection.RemoteEndpoint ?? remotePeer.Address, disconnect);
-            _remotePeers[remotePeer.Identity] = remotePeer;
+            if (!anonymousPeer)
+            {
+                _remotePeers[remotePeer.Identity] = remotePeer;
+            }
             onConnected(connection);
         };
+        connection.PeerIdentifiedCallback = previous => Canonicalize(connection, previous);
         return connection;
+    }
+
+    /// <summary>
+    ///     A connection's peer started anonymous and Identify has named
+    ///     it: fold it into the switch's one canonical peer for that
+    ///     identity. If a canonical peer already exists (an earlier
+    ///     identified dial, say), the anonymous peer's address book is
+    ///     absorbed into it and the connection adopts it; otherwise the
+    ///     peer itself becomes canonical. Either way, from here on
+    ///     every route to this identity — registry, dial, connection —
+    ///     names the same object.
+    /// </summary>
+    private void Canonicalize(RemotePeerConnection connection, Identity previousIdentity)
+    {
+        IRemotePeer peer = connection.RemotePeer;
+
+        if (_remotePeers.TryGetValue(previousIdentity, out IRemotePeer? stale)
+            && ReferenceEquals(stale, peer))
+        {
+            _remotePeers.TryRemove(previousIdentity, out _);
+        }
+
+        if (_remotePeers.TryGetValue(peer.Identity, out IRemotePeer? canonical))
+        {
+            if (ReferenceEquals(canonical, peer))
+            {
+                return;
+            }
+
+            if (canonical is RemotePeer canonicalPeer && peer is RemotePeer anonymousPeer)
+            {
+                canonicalPeer.AbsorbAddressesFrom(anonymousPeer);
+            }
+            connection.RemotePeer = canonical;
+        }
+        else
+        {
+            _remotePeers[peer.Identity] = peer;
+        }
     }
 
     private void DialIdentityProtocols(RemotePeerConnection connection)
@@ -209,14 +252,23 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         RemotePeerConnection shell = CreateStackConnection(
             localPeer, new RemotePeer(new Identity()),
             disconnect: () => Task.CompletedTask,
-            onConnected: _ => { });
+            onConnected: _ => { }, anonymousPeer: true);
         shell.ListenerReadyCallback = () => ready.TrySetResult();
 
         ((ChannelFactory)rootFactory).ConnectionFactory = () =>
-            CreateStackConnection(
+        {
+            RemotePeerConnection accepted = CreateStackConnection(
                 localPeer, new RemotePeer(new Identity()),
                 disconnect: () => Task.CompletedTask,
-                onConnected: connection => listener.RaiseOnConnection(connection.RemotePeer));
+                onConnected: connection => listener.RaiseOnConnection(connection.RemotePeer),
+                anonymousPeer: true);
+            // An accepted connection's local endpoint is the
+            // listener's bound address, which the transport recorded
+            // on the shell before accepting. (Context forks used to
+            // inherit this by copy; connections state it explicitly.)
+            accepted.LocalEndpoint = shell.LocalEndpoint;
+            return accepted;
+        };
 
         _ = root.ListenAsync(signalingChannel, rootFactory, shell)
             .ContinueWith(task =>
@@ -256,7 +308,8 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     public Task<IRemotePeerConnection> DialAsync(Multiaddress addr, CancellationToken token = default)
     {
-        return DialAsync(_localPeer, addr, RemotePeerForAddress(addr), token);
+        (IRemotePeer peer, bool anonymous) = RemotePeerForAddress(addr);
+        return DialAsync(_localPeer, addr, peer, token, anonymous);
     }
 
     /// <summary>
@@ -270,15 +323,15 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
     ///     a /p2p/ part the peer starts anonymous; in both cases
     ///     Identify fills the identity in during the handshake.
     /// </summary>
-    private IRemotePeer RemotePeerForAddress(Multiaddress addr)
+    private (IRemotePeer Peer, bool Anonymous) RemotePeerForAddress(Multiaddress addr)
     {
         if (addr.Get<P2P>()?.ToString() is string peerId
             && PeerId.ExtractPublicKey(new PeerId(peerId).Bytes) is { } publicKey)
         {
-            return GetRemotePeer(new Identity(publicKey));
+            return (GetRemotePeer(new Identity(publicKey)), false);
         }
 
-        return new RemotePeer(new Identity());
+        return (new RemotePeer(new Identity()), true);
     }
 
     public async Task<IRemotePeerConnection> DialAsync(IRemotePeer peer, CancellationToken token = default)
@@ -314,10 +367,11 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     internal Task<IRemotePeerConnection> DialAsync(ILocalPeer fromPeer, Multiaddress addr, CancellationToken token = default)
     {
-        return DialAsync(fromPeer, addr, RemotePeerForAddress(addr), token);
+        (IRemotePeer peer, bool anonymous) = RemotePeerForAddress(addr);
+        return DialAsync(fromPeer, addr, peer, token, anonymous);
     }
 
-    internal async Task<IRemotePeerConnection> DialAsync(ILocalPeer fromPeer, Multiaddress addr, IRemotePeer remotePeer, CancellationToken token = default)
+    internal async Task<IRemotePeerConnection> DialAsync(ILocalPeer fromPeer, Multiaddress addr, IRemotePeer remotePeer, CancellationToken token = default, bool anonymousPeer = false)
     {
         remotePeer.GetOrAddAddress(addr);
         (IProtocol root, IChannelFactory rootFactory) = BuildChain(addr);
@@ -338,7 +392,8 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
             {
                 DialIdentityProtocols(conn);
                 connected.TrySetResult(conn);
-            });
+            },
+            anonymousPeer: anonymousPeer);
 
         _ = root.DialAsync(signalingChannel, rootFactory, connection)
             .ContinueWith(task =>
