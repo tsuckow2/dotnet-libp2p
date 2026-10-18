@@ -242,4 +242,22 @@ public class Identity
     }
 
     public PeerId PeerId => new(PublicKey);
+
+    /// <summary>
+    ///     An identity is its public key: two Identity objects wrapping
+    ///     the same key are the same identity, whoever constructed them.
+    ///     (The private key, when present, is not part of equality — a
+    ///     remote peer's identity and our own record of it must compare
+    ///     equal.) This is what lets the switch intern remote peers by
+    ///     identity in a dictionary.
+    /// </summary>
+    public override bool Equals(object? obj)
+    {
+        return obj is Identity other && PublicKey.Equals(other.PublicKey);
+    }
+
+    public override int GetHashCode()
+    {
+        return PublicKey.GetHashCode();
+    }
 }

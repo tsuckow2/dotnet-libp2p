@@ -38,6 +38,18 @@ public class IdentityTests
         { TestName = "Rsa" };
     }
 
+    [Test]
+    public void Test_EqualityIsByPublicKey()
+    {
+        Identity original = new();
+        Identity sameKey = new(original.PublicKey);
+        Identity other = new();
+
+        Assert.That(sameKey, Is.EqualTo(original));
+        Assert.That(sameKey.GetHashCode(), Is.EqualTo(original.GetHashCode()));
+        Assert.That(other, Is.Not.EqualTo(original));
+    }
+
     [TestCaseSource(nameof(KeyTypes))]
     public void Test_KeyGeneration(KeyType keyType)
         => _ = new Identity(keyType: keyType);

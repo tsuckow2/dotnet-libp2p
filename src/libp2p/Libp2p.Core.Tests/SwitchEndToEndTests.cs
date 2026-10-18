@@ -111,4 +111,28 @@ public class SwitchEndToEndTests
         await connection.DisconnectAsync();
         await listener.DisconnectAsync();
     }
+
+    [Test]
+    public async Task TwoDialsToTheSamePeer_ShareOneRemotePeer()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        // The address names the peer by an identity-hash id, so both
+        // dials must land on the switch's one interned RemotePeer for
+        // that identity — not a fresh object per dial.
+        IRemotePeerConnection first = await dialerNode.Switch.DialAsync(listener.Address, cts.Token);
+        IRemotePeerConnection second = await dialerNode.Switch.DialAsync(listener.Address, cts.Token);
+
+        Assert.That(second.RemotePeer, Is.SameAs(first.RemotePeer));
+        Assert.That(first.RemotePeer.Identity, Is.EqualTo(listenerNode.Peer.Identity));
+
+        await first.DisconnectAsync();
+        await second.DisconnectAsync();
+        await listener.DisconnectAsync();
+    }
 }

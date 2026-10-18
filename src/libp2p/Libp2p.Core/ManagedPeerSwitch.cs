@@ -258,19 +258,20 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
     /// <summary>
     ///     The remote peer for an address being dialed: when the
     ///     address carries a /p2p/ part whose peer id embeds the public
-    ///     key (identity-hash ids, e.g. Ed25519), the peer starts with
-    ///     that identity — a dial must know who it expects to reach.
-    ///     For hashed peer ids the key cannot be recovered from the
-    ///     id, and for addresses without a /p2p/ part the peer starts
-    ///     anonymous; in both cases Identify fills the identity in
-    ///     during the handshake.
+    ///     key (identity-hash ids, e.g. Ed25519), the peer is the
+    ///     switch's interned one for that identity — a dial must know
+    ///     who it expects to reach, and every dial to the same peer
+    ///     must agree on the object. For hashed peer ids the key
+    ///     cannot be recovered from the id, and for addresses without
+    ///     a /p2p/ part the peer starts anonymous; in both cases
+    ///     Identify fills the identity in during the handshake.
     /// </summary>
-    private static RemotePeer RemotePeerForAddress(Multiaddress addr)
+    private IRemotePeer RemotePeerForAddress(Multiaddress addr)
     {
         if (addr.Get<P2P>()?.ToString() is string peerId
             && PeerId.ExtractPublicKey(new PeerId(peerId).Bytes) is { } publicKey)
         {
-            return new RemotePeer(new Identity(publicKey));
+            return GetRemotePeer(new Identity(publicKey));
         }
 
         return new RemotePeer(new Identity());
