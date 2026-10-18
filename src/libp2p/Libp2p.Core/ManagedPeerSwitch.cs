@@ -129,9 +129,16 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     private IProtocol PickTransport(Multiaddress addr)
     {
-        // Transports are picked by the address's shape, matched against
-        // the protocol id: /tcp/ is IpTcp's, /udp/ (quic-v1) is Quic's.
-        string? transportId = addr.Has<TCP>() ? "ip-tcp" : addr.Has<UDP>() ? "quic-v1" : null;
+        // Transports are picked by the outermost transport boundary of
+        // the address, matched against the protocol id: a routed
+        // address (one carrying /p2p-circuit) belongs to the circuit
+        // transport, which itself dials the relay's prefix; a direct
+        // address falls through to the socket transports by shape —
+        // /tcp/ is IpTcp's, /udp/ (quic-v1) is Quic's.
+        string? transportId = addr.Has<P2PCircuit>() ? "p2p-circuit"
+            : addr.Has<TCP>() ? "ip-tcp"
+            : addr.Has<UDP>() ? "quic-v1"
+            : null;
         if (transportId is null)
         {
             throw new NotSupportedException($"No transport can serve {addr}: the switch dials and listens on TCP and QUIC addresses.");
@@ -314,18 +321,20 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     /// <summary>
     ///     The remote peer for an address being dialed: when the
-    ///     address carries a /p2p/ part whose peer id embeds the public
-    ///     key (identity-hash ids, e.g. Ed25519), the peer is the
+    ///     address's terminal /p2p/ part embeds the public key in its
+    ///     peer id (identity-hash ids, e.g. Ed25519), the peer is the
     ///     switch's interned one for that identity — a dial must know
     ///     who it expects to reach, and every dial to the same peer
-    ///     must agree on the object. For hashed peer ids the key
-    ///     cannot be recovered from the id, and for addresses without
-    ///     a /p2p/ part the peer starts anonymous; in both cases
-    ///     Identify fills the identity in during the handshake.
+    ///     must agree on the object. A routed address terminates at
+    ///     its final /p2p/ (the destination), never the relay's. For
+    ///     hashed peer ids the key cannot be recovered from the id,
+    ///     and for addresses without a /p2p/ part the peer starts
+    ///     anonymous; in both cases Identify fills the identity in
+    ///     during the handshake.
     /// </summary>
     private (IRemotePeer Peer, bool Anonymous) RemotePeerForAddress(Multiaddress addr)
     {
-        if (addr.Get<P2P>()?.ToString() is string peerId
+        if (addr.TerminalP2P()?.ToString() is string peerId
             && PeerId.ExtractPublicKey(new PeerId(peerId).Bytes) is { } publicKey)
         {
             return (GetRemotePeer(new Identity(publicKey)), false);

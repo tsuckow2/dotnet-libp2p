@@ -215,4 +215,40 @@ public class SwitchEndToEndTests
         await second.DisconnectAsync();
         await listener.DisconnectAsync();
     }
+
+    [Test]
+    public async Task Dial_CircuitAddress_RefusedUntilACircuitTransportIsRegistered()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+        var destination = new Identity();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        // A routed address: the listening node plays the relay (its
+        // endpoint and identity are the address's prefix); the
+        // destination exists only as the address's terminal /p2p.
+        var circuitAddress = Multiaddress.Decode(
+            $"{listener.Address}/p2p-circuit/p2p/{destination.PeerId}");
+
+        // No circuit transport is registered, so the switch refuses at
+        // the address's outermost boundary instead of socket-dialing
+        // the relay's endpoint as if it were the destination's.
+        NotSupportedException? error = Assert.ThrowsAsync<NotSupportedException>(
+            async () => await dialerNode.Switch.DialAsync(circuitAddress, cts.Token));
+        Assert.That(error!.Message, Does.Contain("p2p-circuit"));
+
+        // The peer the dial seeded from the address is the destination
+        // (the terminal /p2p), never the relay.
+        var dialer = (ManagedPeerSwitch)dialerNode.Switch;
+        Assert.That(dialer.RemotePeers.ContainsKey(destination), Is.True);
+        Assert.That(dialer.RemotePeers.ContainsKey(listenerNode.Peer.Identity), Is.False);
+
+        // And nothing ever connected to the "relay".
+        Assert.That(((ManagedPeerSwitch)listenerNode.Switch).RemotePeers.IsEmpty, Is.True);
+
+        await listener.DisconnectAsync();
+    }
 }
