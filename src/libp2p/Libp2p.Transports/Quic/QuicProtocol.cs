@@ -43,6 +43,8 @@ public class QuicProtocol : IProtocol, ITransport
 
     public string Id => "quic-v1";
 
+    public string AddressProtocol => "quic-v1";
+
     public async Task ListenAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection peerConnection)
     {
         if (channelFactory is null)

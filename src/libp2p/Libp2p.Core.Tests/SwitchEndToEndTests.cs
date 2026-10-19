@@ -251,4 +251,46 @@ public class SwitchEndToEndTests
 
         await listener.DisconnectAsync();
     }
+
+    [Test]
+    public async Task Dial_WebSocketAddress_RefusedUntilAWsTransportIsRegistered()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        // The listener's own endpoint with /ws layered over it: the
+        // outermost transport component is now ws, which no registered
+        // transport declares — IpTcp must not claim the address just
+        // because it contains its /tcp/ endpoint underneath.
+        string full = listener.Address.ToString();
+        var wsAddress = Multiaddress.Decode(
+            full[..full.IndexOf("/p2p/", StringComparison.Ordinal)] + "/ws"
+            + full[full.IndexOf("/p2p/", StringComparison.Ordinal)..]);
+
+        NotSupportedException? error = Assert.ThrowsAsync<NotSupportedException>(
+            async () => await dialerNode.Switch.DialAsync(wsAddress, cts.Token));
+        Assert.That(error!.Message, Does.Contain("'ws'"));
+        Assert.That(((ManagedPeerSwitch)listenerNode.Switch).RemotePeers.IsEmpty, Is.True);
+
+        await listener.DisconnectAsync();
+    }
+
+    [Test]
+    public void Dial_BareUdpAddress_RefusedBecauseNoTransportDeclaresUdp()
+    {
+        var dialerNode = BuildNode();
+
+        // A bare /udp/ address: udp is a transport component, but the
+        // Quic transport declares quic-v1, not udp — there is nothing
+        // to serve this address with.
+        var udpAddress = Multiaddress.Decode("/ip4/127.0.0.1/udp/4001");
+
+        NotSupportedException? error = Assert.ThrowsAsync<NotSupportedException>(
+            async () => await dialerNode.Switch.DialAsync(udpAddress, CancellationToken.None));
+        Assert.That(error!.Message, Does.Contain("'udp'"));
+    }
 }

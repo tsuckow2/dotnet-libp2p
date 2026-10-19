@@ -17,6 +17,8 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
 
     public string Id => "ip-tcp";
 
+    public string AddressProtocol => "tcp";
+
     public async Task ListenAsync(IChannel singalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
         if (channelFactory is null)

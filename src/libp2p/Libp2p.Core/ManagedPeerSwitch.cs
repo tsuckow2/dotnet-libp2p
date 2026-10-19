@@ -127,24 +127,36 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         return protocol.Id == "/multistream/1.0.0";
     }
 
+    /// <summary>
+    ///     The transport protocols of the multiaddr vocabulary. An
+    ///     address is a layered path; its outermost layer of this set
+    ///     is the transport boundary the switch must serve — layers
+    ///     past it (a /ws/ over the TCP endpoint, a /p2p-circuit past
+    ///     the relay) belong to a different transport than the one
+    ///     that produced the bytes underneath.
+    /// </summary>
+    private static readonly HashSet<string> TransportProtocols =
+    [
+        "tcp", "udp", "quic", "quic-v1", "ws", "wss", "webrtc",
+        "webrtc-direct", "webtransport", "p2p-circuit", "onion", "onion3",
+    ];
+
     private IProtocol PickTransport(Multiaddress addr)
     {
-        // Transports are picked by the outermost transport boundary of
-        // the address, matched against the protocol id: a routed
-        // address (one carrying /p2p-circuit) belongs to the circuit
-        // transport, which itself dials the relay's prefix; a direct
-        // address falls through to the socket transports by shape —
-        // /tcp/ is IpTcp's, /udp/ (quic-v1) is Quic's.
-        string? transportId = addr.Has<P2PCircuit>() ? "p2p-circuit"
-            : addr.Has<TCP>() ? "ip-tcp"
-            : addr.Has<UDP>() ? "quic-v1"
-            : null;
-        if (transportId is null)
+        // The transport is picked positionally: the address's
+        // outermost transport component decides, and the registered
+        // transport declaring that component (ITransport.AddressProtocol)
+        // serves it. A component no registered transport declares —
+        // /p2p-circuit today — is refused here rather than served by
+        // whichever transport produced the bytes underneath it.
+        string? outermost = addr.Protocols
+            .LastOrDefault(protocol => TransportProtocols.Contains(protocol.Name))?.Name;
+        if (outermost is null)
         {
-            throw new NotSupportedException($"No transport can serve {addr}: the switch dials and listens on TCP and QUIC addresses.");
+            throw new NotSupportedException($"No transport can serve {addr}: the address has no transport component.");
         }
-        return _protocolRegistry.Transports.OfType<IProtocol>().FirstOrDefault(transport => transport.Id == transportId)
-            ?? throw new NotSupportedException($"No '{transportId}' transport is registered, but {addr} needs one.");
+        return _protocolRegistry.Transports.FirstOrDefault(transport => transport.AddressProtocol == outermost) as IProtocol
+            ?? throw new NotSupportedException($"No registered transport can serve {addr}: nothing is registered for '{outermost}'.");
     }
 
     // ---- connection bookkeeping -----------------------------------------
