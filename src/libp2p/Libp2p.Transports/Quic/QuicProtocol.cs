@@ -72,7 +72,16 @@ public class QuicProtocol : IProtocol, ITransport
             ServerAuthenticationOptions = new SslServerAuthenticationOptions
             {
                 ApplicationProtocols = protocols,
-                RemoteCertificateValidationCallback = (_, c, _, _) => VerifyRemoteCertificate(peerConnection.RemotePeer, c),
+                // Mutual TLS is the protocol: the server must ask
+                // for the client's certificate — without this, no
+                // certificate is ever presented, the validation
+                // callback never runs, and the connection is
+                // encrypted but unauthenticated. Inbound has no
+                // named expectation: the certificate proves whoever
+                // the client is, and the accept loop publishes it.
+                ClientCertificateRequired = true,
+                RemoteCertificateValidationCallback = (_, c, _, _) =>
+                    CertificateHelper.ValidateCertificate(c as X509Certificate2, null),
                 ServerCertificate = CertificateHelper.CertificateFromIdentity(_sessionKey, peerConnection.LocalPeer.Identity)
             },
         };
@@ -207,9 +216,6 @@ public class QuicProtocol : IProtocol, ITransport
 
         await ProcessStreams(connection, peerConnection, channelFactory);
     }
-
-    private static bool VerifyRemoteCertificate(IPeer? remotePeer, X509Certificate certificate) =>
-         CertificateHelper.ValidateCertificate(certificate as X509Certificate2, remotePeer?.Address.Get<P2P>().ToString());
 
     // ---- ITransport: the raw comm shape, one stream per comm ------------
     //
