@@ -25,6 +25,8 @@ public class TestRemotePeerConnection(IRemotePeer remotePeer, ILocalPeer? localP
 
     public PeerId? ProvenPeerId { get; set; }
 
+    public IRemotePeerConnection? ParentConnection { get; set; }
+
     public BlockingCollection<IChannelRequest> SubDialRequests { get; } = new();
 
     public void Connected()

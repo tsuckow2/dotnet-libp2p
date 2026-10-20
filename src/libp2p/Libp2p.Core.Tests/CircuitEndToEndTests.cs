@@ -198,6 +198,40 @@ public class CircuitEndToEndTests
     }
 
     [Test]
+    public async Task RelayedConnection_IsLayeredOverTheRelayConnection_AndEndsWithIt()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var (relaySwitch, relayPeer) = BuildRelayNode();
+        IListener relayListener = await relaySwitch.ListenAsync(relayPeer, cts.Token);
+
+        var destinationNode = BuildNode(listenAddress: $"{relayListener.Address}/p2p-circuit");
+        IListener destinationListener = await destinationNode.Switch.ListenAsync(destinationNode.Peer, cts.Token);
+
+        var dialerNode = BuildNode();
+        IRemotePeerConnection connection = await dialerNode.Switch.DialAsync(destinationListener.Address, cts.Token);
+
+        // The relayed connection references the connection it rides
+        // on: the dialer's connection to the relay.
+        IRemotePeerConnection? parent = connection.ParentConnection;
+        Assert.That(parent, Is.Not.Null);
+        Assert.That(parent!.RemotePeer.Identity, Is.EqualTo(relayPeer.Identity));
+        Assert.That(parent, Is.Not.SameAs(connection));
+
+        await connection.DialAsync<PingProtocol>(cts.Token);
+
+        // When the parent ends, the layered connection is
+        // disconnected with it — its own teardown runs (which clears
+        // the parent reference) rather than the connection lingering
+        // until a stream notices.
+        await parent.DisconnectAsync();
+        Assert.That(connection.ParentConnection, Is.Null);
+
+        await destinationListener.DisconnectAsync();
+        await relayListener.DisconnectAsync();
+    }
+
+    [Test]
     public async Task Dial_ThroughRelay_ToPeerWithoutReservation_IsRefused()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));

@@ -115,7 +115,9 @@ public sealed class StopJob
 /// <summary>
 ///     An inbound relayed stream offered to a circuit listener: the
 ///     raw stream, the peer the relay says it comes from (the
-///     security layer above will prove or refute that), and the
-///     circuit address that source is reachable at.
+///     security layer above will prove or refute that), the circuit
+///     address that source is reachable at, and the connection to
+///     the relay the stream arrived on — the accepted connection's
+///     parent.
 /// </summary>
-public sealed record StopAcceptance(IChannel Channel, PeerId Source, Multiaddress SourceAddress);
+public sealed record StopAcceptance(IChannel Channel, PeerId Source, Multiaddress SourceAddress, IRemotePeerConnection RelayConnection);

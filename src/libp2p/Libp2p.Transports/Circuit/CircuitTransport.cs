@@ -56,6 +56,9 @@ public class CircuitTransport(IServiceProvider serviceProvider, CircuitJobs jobs
 
         connection.RemoteEndpoint = addr;
         connection.LocalEndpoint = job.RelayConnection?.LocalEndpoint;
+        // This connection is layered over the relay connection: it
+        // rides on that connection's streams and ends with it.
+        connection.ParentConnection = job.RelayConnection;
 
         IChannel upChannel = channelFactory.SubDial(connection);
         job.PumpTo.TrySetResult(upChannel);
@@ -178,6 +181,7 @@ public class CircuitTransport(IServiceProvider serviceProvider, CircuitJobs jobs
         IRemotePeerConnection connection = factory.AcceptConnection();
         connection.RemoteEndpoint = acceptance.SourceAddress;
         connection.RemotePeer.Address = acceptance.SourceAddress;
+        connection.ParentConnection = acceptance.RelayConnection;
 
         IChannel upChannel = factory.SubListen(connection);
         await ChannelPump.BothWaysAsync(acceptance.Channel, upChannel);

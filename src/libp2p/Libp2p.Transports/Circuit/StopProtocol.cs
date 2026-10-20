@@ -75,6 +75,6 @@ public class StopProtocol(CircuitJobs jobs, ILoggerFactory? loggerFactory = null
         // The address the source is reachable at: through this relay.
         var sourceAddress = Multiaddress.Decode($"{connection.RemotePeer.Address}/p2p-circuit/p2p/{source}");
         _logger?.LogDebug("Accepting a relayed connection from {source}", source);
-        await sink(new StopAcceptance(channel, source, sourceAddress));
+        await sink(new StopAcceptance(channel, source, sourceAddress, connection));
     }
 }

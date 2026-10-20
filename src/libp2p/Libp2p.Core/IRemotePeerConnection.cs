@@ -75,6 +75,20 @@ public interface IRemotePeerConnection
     PeerId? ExpectedPeerId { get; set; }
 
     /// <summary>
+    ///     The connection this one is layered over, when a transport
+    ///     built it on top of another connection — a relayed (circuit)
+    ///     connection's parent is the connection to the relay, whose
+    ///     streams it rides on. Set by the transport while the
+    ///     connection is being established; null for connections a
+    ///     transport serves directly. Disconnecting a connection
+    ///     disconnects the connections layered over it (they cannot
+    ///     outlive what carries them); the reverse never happens —
+    ///     a layered connection ending leaves its parent, which
+    ///     others may share, untouched.
+    /// </summary>
+    IRemotePeerConnection? ParentConnection { get; set; }
+
+    /// <summary>
     ///     The peer id the security layer proved during the handshake,
     ///     derived from the authenticated remote key. Set together with
     ///     the remote peer's identity, which the security layer

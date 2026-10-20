@@ -72,6 +72,34 @@ internal class RemotePeerConnection : IRemotePeerConnection
     public PeerId? ExpectedPeerId { get; set; }
     public PeerId? ProvenPeerId { get; set; }
 
+    private IRemotePeerConnection? _parentConnection;
+    private readonly ConcurrentDictionary<IRemotePeerConnection, byte> _layeredConnections = new();
+
+    public IRemotePeerConnection? ParentConnection
+    {
+        get => _parentConnection;
+        set
+        {
+            if (ReferenceEquals(_parentConnection, value))
+            {
+                return;
+            }
+            if (ReferenceEquals(value, this))
+            {
+                throw new ArgumentException("A connection cannot be layered over itself.");
+            }
+            if (_parentConnection is RemotePeerConnection oldParent)
+            {
+                oldParent._layeredConnections.TryRemove(this, out _);
+            }
+            _parentConnection = value;
+            if (value is RemotePeerConnection newParent)
+            {
+                newParent._layeredConnections.TryAdd(this, default);
+            }
+        }
+    }
+
     public BlockingCollection<IChannelRequest> SubDialRequests { get; } = new();
 
     /// <summary>
@@ -117,8 +145,27 @@ internal class RemotePeerConnection : IRemotePeerConnection
         ListenerReadyCallback?.Invoke();
     }
 
-    public Task DisconnectAsync()
+    public async Task DisconnectAsync()
     {
-        return _disconnect();
+        // Connections layered over this one ride on its streams;
+        // they end with it, disconnected explicitly rather than left
+        // to notice a dead stream.
+        IRemotePeerConnection[] layered = _layeredConnections.Keys.ToArray();
+        _layeredConnections.Clear();
+        foreach (IRemotePeerConnection connection in layered)
+        {
+            try
+            {
+                await connection.DisconnectAsync();
+            }
+            catch
+            {
+                // A layered connection failing to disconnect does
+                // not stop the rest of the teardown.
+            }
+        }
+
+        ParentConnection = null;
+        await _disconnect();
     }
 }
