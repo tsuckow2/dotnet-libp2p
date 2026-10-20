@@ -151,6 +151,7 @@ public class QuicProtocol : IProtocol, ITransport
             ipAddress.AddressFamily == AddressFamily.InterNetwork ? IPAddress.Any : IPAddress.IPv6Any, 0);
         IPEndPoint remoteEndpoint = new(ipAddress, udpPort);
 
+        Identity? provenIdentity = null;
         QuicClientConnectionOptions clientConnectionOptions = new()
         {
             LocalEndPoint = localEndpoint,
@@ -162,13 +163,24 @@ public class QuicProtocol : IProtocol, ITransport
             {
                 TargetHost = null,
                 ApplicationProtocols = protocols,
-                RemoteCertificateValidationCallback = (_, c, _, _) => VerifyRemoteCertificate(peerConnection.RemotePeer, c),
+                RemoteCertificateValidationCallback = (_, c, _, _) =>
+                    CertificateHelper.ValidateCertificate(c as X509Certificate2, peerConnection.ExpectedPeerId?.ToString(), out provenIdentity),
                 ClientCertificates = new X509CertificateCollection { CertificateHelper.CertificateFromIdentity(_sessionKey, peerConnection.LocalPeer.Identity) },
             },
             RemoteEndPoint = remoteEndpoint,
         };
 
         QuicConnection connection = await QuicConnection.ConnectAsync(clientConnectionOptions);
+
+        // The certificate validation proved the remote's identity key
+        // (and that it is the peer the dial named, when it named one):
+        // establish the peer from the proof, as the security layer
+        // does for Noise.
+        if (provenIdentity is not null)
+        {
+            peerConnection.ProvenPeerId = provenIdentity.PeerId;
+            peerConnection.RemotePeer.Identity = provenIdentity;
+        }
 
         _logger?.Connected(connection.LocalEndPoint, connection.RemoteEndPoint);
 

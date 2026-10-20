@@ -61,6 +61,30 @@ public interface IRemotePeerConnection
     Multiaddress? LocalEndpoint { get; set; }
 
     /// <summary>
+    ///     The peer id this connection is expected to reach, when the
+    ///     dial named one: the terminal /p2p of the dialed address.
+    ///     Set by the switch at formation on addressed dials; null for
+    ///     anonymous dials and accepted connections, where no peer was
+    ///     named in advance. The security layer — the one place a
+    ///     remote key is proven — faults the handshake when the proven
+    ///     identity is not this one, so a connection handed out for a
+    ///     named peer is that peer, not whoever answered at its
+    ///     address. (A stack with no security layer has no proof and
+    ///     enforces nothing.)
+    /// </summary>
+    PeerId? ExpectedPeerId { get; set; }
+
+    /// <summary>
+    ///     The peer id the security layer proved during the handshake,
+    ///     derived from the authenticated remote key. Set together with
+    ///     the remote peer's identity, which the security layer
+    ///     establishes from the same key; null until a security layer
+    ///     has run. Identify cross-checks its message against this and
+    ///     never renames a proven peer.
+    /// </summary>
+    PeerId? ProvenPeerId { get; set; }
+
+    /// <summary>
     ///     Sub-dial requests for this connection: protocols and the
     ///     switch queue work here, and the connection's muxer consumes
     ///     it, opening a stream per request. Each connection owns its

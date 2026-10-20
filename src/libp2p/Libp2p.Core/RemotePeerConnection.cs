@@ -69,6 +69,8 @@ internal class RemotePeerConnection : IRemotePeerConnection
 
     public Multiaddress? RemoteEndpoint { get; set; }
     public Multiaddress? LocalEndpoint { get; set; }
+    public PeerId? ExpectedPeerId { get; set; }
+    public PeerId? ProvenPeerId { get; set; }
 
     public BlockingCollection<IChannelRequest> SubDialRequests { get; } = new();
 

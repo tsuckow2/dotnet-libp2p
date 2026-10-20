@@ -416,6 +416,14 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
             },
             anonymousPeer: anonymousPeer);
 
+        // The dial names its expectation: the peer the address
+        // terminates at (its terminal /p2p — never a relay's). The
+        // security layer enforces it against the handshake's proven
+        // key before this connection is handed out.
+        connection.ExpectedPeerId = addr.TerminalP2P() is { } terminal
+            ? new PeerId(terminal.ToString())
+            : null;
+
         _ = root.DialAsync(signalingChannel, rootFactory, connection)
             .ContinueWith(task =>
             {
@@ -425,7 +433,18 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
                 // of hanging until the caller's token fires.
                 if (task.IsFaulted)
                 {
-                    connected.TrySetException(task.Exception!);
+                    // Surface one connection failure, not the stack's
+                    // aggregate: a PeerConnectionException from any
+                    // layer stays itself; anything else (a socket torn
+                    // down mid-handshake, say) becomes the inner
+                    // exception of one.
+                    AggregateException stackFailure = task.Exception!.Flatten();
+                    PeerConnectionException? connectionFailure = stackFailure.InnerExceptions
+                        .OfType<PeerConnectionException>().FirstOrDefault();
+                    connected.TrySetException(connectionFailure
+                        ?? new PeerConnectionException(
+                            $"The connection to {addr} failed during establishment.",
+                            stackFailure.InnerExceptions[0]));
                 }
                 else if (!connected.Task.IsCompleted)
                 {

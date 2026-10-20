@@ -62,19 +62,17 @@ public class NoiseProtocol(MultiplexerSettings? multiplexerSettings = null, ILog
         PublicKey? msg1KeyDecoded = PublicKey.Parser.ParseFrom(msg1Decoded.IdentityKey);
         //var key = new byte[] { 0x1 }.Concat(clientStatic.PublicKey).ToArray();
 
-        PeerId remotePeerId = new(msg1KeyDecoded);
-        if (!connection.RemotePeer.Address.Has<P2P>())
+        if (!EstablishRemoteIdentity(connection, handshakeState, msg1Decoded))
         {
-            connection.RemotePeer.Address.Add(new P2P(remotePeerId.ToString()));
+            await connection.DisconnectAsync();
+            return;
         }
 
         byte[] msg = [.. Encoding.UTF8.GetBytes(PayloadSigPrefix), .. ByteString.CopyFrom(clientStatic.PublicKey)];
-        byte[] sig = new byte[64];
-        Ed25519.Sign([.. connection.LocalPeer.Identity.PrivateKey!.Data], 0, msg, 0, msg.Length, sig, 0);
         NoiseHandshakePayload payload = new()
         {
             IdentityKey = connection.LocalPeer.Identity.PublicKey.ToByteString(),
-            IdentitySig = ByteString.CopyFrom(sig),
+            IdentitySig = ByteString.CopyFrom(connection.LocalPeer.Identity.Sign(msg)),
             Extensions = _extensions
         };
 
@@ -120,12 +118,10 @@ public class NoiseProtocol(MultiplexerSettings? multiplexerSettings = null, ILog
         byte[] msg = Encoding.UTF8.GetBytes(PayloadSigPrefix)
             .Concat(ByteString.CopyFrom(serverStatic.PublicKey))
             .ToArray();
-        byte[] sig = new byte[64];
-        Ed25519.Sign(connection.LocalPeer.Identity.PrivateKey!.Data.ToArray(), 0, msg, 0, msg.Length, sig, 0);
         NoiseHandshakePayload payload = new()
         {
             IdentityKey = connection.LocalPeer.Identity.PublicKey.ToByteString(),
-            IdentitySig = ByteString.CopyFrom(sig),
+            IdentitySig = ByteString.CopyFrom(connection.LocalPeer.Identity.Sign(msg)),
             Extensions = _extensions
         };
 
@@ -145,11 +141,10 @@ public class NoiseProtocol(MultiplexerSettings? multiplexerSettings = null, ILog
         PublicKey? msg2KeyDecoded = PublicKey.Parser.ParseFrom(msg2Decoded.IdentityKey);
         Transport? transport = msg2.Transport;
 
-        PeerId remotePeerId = new(msg2KeyDecoded);
-
-        if (!connection.RemotePeer.Address.Has<P2P>())
+        if (!EstablishRemoteIdentity(connection, handshakeState, msg2Decoded))
         {
-            connection.RemotePeer.Address.Add(new P2P(remotePeerId.ToString()));
+            await connection.DisconnectAsync();
+            return;
         }
 
         _logger?.LogDebug("Established connection to {peer}", connection.RemotePeer.Address);
@@ -160,6 +155,54 @@ public class NoiseProtocol(MultiplexerSettings? multiplexerSettings = null, ILog
 
         _ = upChannel.CloseAsync();
         _logger?.LogDebug("Closed");
+    }
+
+    /// <summary>
+    ///     The handshake payload claims an identity key; what proves
+    ///     the claim is the payload signature binding that key to the
+    ///     handshake's static key — the only thing the Noise exchange
+    ///     itself authenticates. Verify the binding, enforce the
+    ///     dial's expectation when it named a peer, and establish the
+    ///     remote peer's identity from the proven key, so everything
+    ///     above the security layer talks to a named, proven peer.
+    ///     (Before this, the presented key was taken on trust: the
+    ///     signature was never checked, here or anywhere else.)
+    ///     Returns false when the claim fails: the caller aborts the
+    ///     connection, which is how a stack layer faults an
+    ///     establishment in progress — the switch's dial then fails
+    ///     as a connection that closed before it was established.
+    /// </summary>
+    private bool EstablishRemoteIdentity(
+        IRemotePeerConnection connection, HandshakeState handshakeState, NoiseHandshakePayload payload)
+    {
+        PublicKey provenKey = PublicKey.Parser.ParseFrom(payload.IdentityKey);
+        var provenIdentity = new Identity(provenKey);
+
+        byte[] binding = [.. Encoding.UTF8.GetBytes(PayloadSigPrefix), .. handshakeState.RemoteStaticPublicKey.ToArray()];
+        if (!provenIdentity.VerifySignature(binding, payload.IdentitySig.ToByteArray()))
+        {
+            _logger?.LogWarning(
+                "Aborting the connection to {peer}: the handshake payload's signature does not bind the presented identity {identity} to the negotiated static key.",
+                connection.RemotePeer.Address, provenIdentity.PeerId);
+            return false;
+        }
+
+        if (connection.ExpectedPeerId is { } expected
+            && !expected.Bytes.AsSpan().SequenceEqual(provenIdentity.PeerId.Bytes))
+        {
+            _logger?.LogWarning(
+                "Aborting the dial to {peer}: the handshake proved {proven}, not the expected {expected}.",
+                connection.RemotePeer.Address, provenIdentity.PeerId, expected);
+            return false;
+        }
+
+        connection.ProvenPeerId = provenIdentity.PeerId;
+        connection.RemotePeer.Identity = provenIdentity;
+        if (!connection.RemotePeer.Address.Has<P2P>())
+        {
+            connection.RemotePeer.Address.Add(new P2P(provenIdentity.PeerId.ToString()));
+        }
+        return true;
     }
 
     private static Task ExchangeData(Transport transport, IChannel downChannel, IChannel upChannel)

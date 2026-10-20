@@ -139,8 +139,8 @@ public class SwitchEndToEndTests
 
     private static async Task WaitForAsync(Func<bool> condition, CancellationToken token)
     {
-        // Identify runs after the dial completes; poll briefly for its
-        // effect instead of sleeping a fixed span.
+        // Poll briefly for an asynchronous effect (a fold-in landing
+        // just after a dial returns) instead of sleeping a fixed span.
         for (int i = 0; i < 100 && !condition(); i++)
         {
             await Task.Delay(100, token);
@@ -149,13 +149,17 @@ public class SwitchEndToEndTests
     }
 
     [Test]
-    public async Task DialWithoutPeerId_IdentifyNamesThePeer_AndItBecomesCanonical()
+    public async Task DialWithoutPeerId_SecurityNamesThePeer_AndItBecomesCanonical()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         // An RSA listener: its peer id is a hash of the key, so even a
         // /p2p-carrying address could not seed the identity — and this
-        // dial does not carry one at all. The peer starts anonymous.
+        // dial does not carry one at all. The peer starts anonymous,
+        // but the security handshake proves the listener's key before
+        // the dial completes, so the connection is already named —
+        // and already the canonical peer — when DialAsync returns.
+        // (Identify used to do this naming, after the fact.)
         var listenerNode = BuildNode(new Identity(keyType: KeyType.Rsa));
         var dialerNode = BuildNode();
 
@@ -164,13 +168,7 @@ public class SwitchEndToEndTests
         Multiaddress bareAddress = full[..full.IndexOf("/p2p/", StringComparison.Ordinal)];
 
         IRemotePeerConnection connection = await dialerNode.Switch.DialAsync(bareAddress, cts.Token);
-        Assert.That(connection.RemotePeer.Identity, Is.Not.EqualTo(listenerNode.Peer.Identity));
-
-        // Identify names the peer on the connection; the switch adopts
-        // that very object as the canonical peer for the identity.
-        await WaitForAsync(
-            () => connection.RemotePeer.Identity.Equals(listenerNode.Peer.Identity),
-            cts.Token);
+        Assert.That(connection.RemotePeer.Identity, Is.EqualTo(listenerNode.Peer.Identity));
         Assert.That(
             ((ManagedPeerSwitch)dialerNode.Switch).RemotePeers.TryGetValue(listenerNode.Peer.Identity, out IRemotePeer? canonical)
                 && ReferenceEquals(canonical, connection.RemotePeer),
@@ -192,10 +190,11 @@ public class SwitchEndToEndTests
         string full = listener.Address.ToString();
         Multiaddress bareAddress = full[..full.IndexOf("/p2p/", StringComparison.Ordinal)];
 
-        // First contact WITH the /p2p address is still anonymous for an
-        // RSA peer (hashed id), but a second, bare dial must not split
-        // the peer: whichever object Identify names first becomes
-        // canonical, and the other connection folds into it.
+        // First contact WITH the /p2p address still starts anonymous
+        // for an RSA peer (hashed id), but a second, bare dial must
+        // not split the peer: whichever object the security handshake
+        // names first becomes canonical, and the other connection
+        // folds into it.
         IRemotePeerConnection first = await dialerNode.Switch.DialAsync(listener.Address, cts.Token);
         await WaitForAsync(
             () => first.RemotePeer.Identity.Equals(listenerNode.Peer.Identity),
@@ -292,5 +291,57 @@ public class SwitchEndToEndTests
         NotSupportedException? error = Assert.ThrowsAsync<NotSupportedException>(
             async () => await dialerNode.Switch.DialAsync(udpAddress, CancellationToken.None));
         Assert.That(error!.Message, Does.Contain("'udp'"));
+    }
+
+    [Test]
+    public async Task Dial_ImpostorAtVictimAddress_FaultsAtTheHandshake()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+        var victim = new Identity();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        // The listener's endpoint, the victim's /p2p: whoever answers
+        // holds the listener's key, and the Noise handshake proves a
+        // different peer than the address named — the dial must fault
+        // there, not hand out a connection to the wrong peer.
+        var victimAddress = AddressWithPeer(listener.Address, victim);
+
+        Assert.ThrowsAsync<PeerConnectionException>(
+            async () => await dialerNode.Switch.DialAsync(victimAddress, cts.Token));
+
+        await listener.DisconnectAsync();
+    }
+
+    [Test]
+    public async Task Dial_ImpostorAtRsaVictimAddress_FaultsAtTheHandshake()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+        // A hashed peer id: the key cannot be extracted from it, but
+        // the proven key can be hashed and compared — the case the
+        // old trust-on-dial caveat carved out.
+        var victim = new Identity(keyType: KeyType.Rsa);
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        var victimAddress = AddressWithPeer(listener.Address, victim);
+
+        Assert.ThrowsAsync<PeerConnectionException>(
+            async () => await dialerNode.Switch.DialAsync(victimAddress, cts.Token));
+
+        await listener.DisconnectAsync();
+    }
+
+    private static Multiaddress AddressWithPeer(Multiaddress address, Identity peer)
+    {
+        string full = address.ToString();
+        return Multiaddress.Decode(
+            full[..full.IndexOf("/p2p/", StringComparison.Ordinal)] + $"/p2p/{peer.PeerId}");
     }
 }

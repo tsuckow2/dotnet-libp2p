@@ -48,7 +48,22 @@ public class IdentifyProtocol : IIdentityProtocol
         Identify.Dto.Identify identity = await channel.ReadPrefixedProtobufAsync(Identify.Dto.Identify.Parser);
 
         _logger?.LogInformation("Received peer info: {identify}", identity);
-        connection.RemotePeer.Identity = new Identity(PublicKey.Parser.ParseFrom(identity.PublicKey));
+
+        // Identify's word is not proof: when the security layer has
+        // already proven who this peer is, a message naming a
+        // different key is a lie about the connection's other end —
+        // refuse it rather than rename a proven peer. (With no
+        // security layer in the stack there is no proof, and Identify
+        // remains the naming authority, as before.)
+        PublicKey identifiedKey = PublicKey.Parser.ParseFrom(identity.PublicKey);
+        if (connection.ProvenPeerId is { } proven
+            && !proven.Bytes.AsSpan().SequenceEqual(new PeerId(identifiedKey).Bytes))
+        {
+            throw new PeerConnectionException(
+                $"Identify named {new PeerId(identifiedKey)}, but the security layer proved {proven}.");
+        }
+
+        connection.RemotePeer.Identity = new Identity(identifiedKey);
 
         if (connection.RemotePeer.Identity.PublicKey.ToByteString() != identity.PublicKey)
         {

@@ -21,6 +21,10 @@ public class TestRemotePeerConnection(IRemotePeer remotePeer, ILocalPeer? localP
 
     public Multiaddress? LocalEndpoint { get; set; }
 
+    public PeerId? ExpectedPeerId { get; set; }
+
+    public PeerId? ProvenPeerId { get; set; }
+
     public BlockingCollection<IChannelRequest> SubDialRequests { get; } = new();
 
     public void Connected()

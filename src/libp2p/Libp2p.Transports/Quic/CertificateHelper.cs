@@ -33,6 +33,20 @@ public class CertificateHelper
 
     public static bool ValidateCertificate(X509Certificate2? certificate, string? peerId)
     {
+        return ValidateCertificate(certificate, peerId, out _);
+    }
+
+    /// <summary>
+    ///     Validates a libp2p certificate: the identity key in its
+    ///     extension must be the expected peer (when one was named)
+    ///     and must have signed the certificate's TLS key. On success
+    ///     <paramref name="identity"/> is the identity the certificate
+    ///     proved — the TLS handshake authenticates it, so callers can
+    ///     establish the remote peer from it.
+    /// </summary>
+    public static bool ValidateCertificate(X509Certificate2? certificate, string? peerId, out Identity? identity)
+    {
+        identity = null;
         if (certificate is null)
         {
             return false;
@@ -65,7 +79,13 @@ public class CertificateHelper
             return false;
         }
 
-        return id.VerifySignature(ContentToSignFromTlsPublicKey(certificate.PublicKey.ExportSubjectPublicKeyInfo()), signature);
+        if (!id.VerifySignature(ContentToSignFromTlsPublicKey(certificate.PublicKey.ExportSubjectPublicKeyInfo()), signature))
+        {
+            return false;
+        }
+
+        identity = id;
+        return true;
     }
 
     private static readonly byte[] SignaturePrefix = "libp2p-tls-handshake:"u8.ToArray();
