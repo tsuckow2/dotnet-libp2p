@@ -243,13 +243,15 @@ class Fetcher(IManagedPeerSwitch peerSwitch, KadClient kad, ILogger logger)
         throw new InvalidOperationException($"No provider could serve {cid}.");
     }
 
-    // Prefer addresses a public client can plausibly reach: no relay
-    // circuits (unsupported), no websockets (not registered), and no
-    // private or loopback IPs, which the DHT is full of.
+    // Prefer addresses a public client can plausibly reach: relay
+    // circuits are dialable now (the circuit transport serves them),
+    // but no websockets (not registered), and no private or loopback
+    // IPs, which the DHT is full of. A circuit address is judged by
+    // its relay's endpoint — the only part that must be public.
     private static bool IsPubliclyDialable(Multiaddress addr)
     {
         string text = addr.ToString();
-        if (text.Contains("/p2p-circuit") || text.Contains("/ws") || text.Contains("/ip6/"))
+        if (text.Contains("/ws") || text.Contains("/ip6/"))
         {
             return false;
         }

@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols.Circuit;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using System.Runtime.Versioning;
 
@@ -31,6 +32,7 @@ public static class ServiceProviderExtensions
             .AddScoped<IManagedPeerSwitch>(sp => (IManagedPeerSwitch)sp.GetRequiredService<IPeerFactory>())
             .AddScoped<PubsubRouter>()
             .AddScoped<MultiplexerSettings>()
+            .AddScoped<CircuitJobs>()
             ;
     }
 }

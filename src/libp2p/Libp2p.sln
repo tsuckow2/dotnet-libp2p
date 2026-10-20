@@ -85,6 +85,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.UnixFs", "..\ipfs\Ipfs
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.UnixFs.Tests", "..\ipfs\Ipfs.UnixFs.Tests\Ipfs.UnixFs.Tests.csproj", "{47B3251D-6E3B-421C-AB51-7EA4335626BA}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Libp2p.Transports", "Libp2p.Transports", "{30AC0867-95A8-46F9-BAC2-EA094173AA05}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Libp2p.Protocols.Circuit", "Libp2p.Transports\Circuit\Libp2p.Protocols.Circuit.csproj", "{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -235,6 +239,10 @@ Global
 		{47B3251D-6E3B-421C-AB51-7EA4335626BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{47B3251D-6E3B-421C-AB51-7EA4335626BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{47B3251D-6E3B-421C-AB51-7EA4335626BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -260,6 +268,7 @@ Global
 		{D9003366-1562-49CA-B32D-087BBE3973ED} = {6F3D9AA9-C92D-4998-BC4E-D5EA068E8D0D}
 		{EC505F21-FC69-4432-88A8-3CD5F7899B08} = {0DC1C6A1-0A5B-43BA-9605-621C21A16716}
 		{2DC2FB81-6F22-40E4-8511-949B334E2E4E} = {0DC1C6A1-0A5B-43BA-9605-621C21A16716}
+		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA} = {30AC0867-95A8-46F9-BAC2-EA094173AA05}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E337E37C-3DB8-42FA-9A83-AC4E3B2557B4}

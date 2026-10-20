@@ -3,6 +3,7 @@
 
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols;
+using Nethermind.Libp2p.Protocols.Circuit;
 using Nethermind.Libp2p.Protocols.Pubsub;
 
 namespace Nethermind.Libp2p.Stack;
@@ -23,12 +24,15 @@ public class Libp2pPeerFactoryBuilder : PeerFactoryBuilderBase<Libp2pPeerFactory
     {
         AddTransport<IpTcpProtocol>();
         AddTransport<QuicProtocol>();
+        AddTransport<CircuitTransport>();
         AddSecurityProtocol<NoiseProtocol>();
         AddMuxerProtocol<YamuxProtocol>();
         AddIdentityProtocol<IdentifyProtocol>();
         AddAppLayerProtocol<MultistreamProtocol>();
         AddAppLayerProtocol<GossipsubProtocol>();
         AddAppLayerProtocol<FloodsubProtocol>();
+        AddAppLayerProtocol<HopProtocol>();
+        AddAppLayerProtocol<StopProtocol>();
     }
 
     public ILibp2pPeerFactoryBuilder WithPlaintextEnforced()

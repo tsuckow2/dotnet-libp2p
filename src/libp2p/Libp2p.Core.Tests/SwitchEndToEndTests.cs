@@ -261,7 +261,7 @@ public class SwitchEndToEndTests
     }
 
     [Test]
-    public async Task Dial_CircuitAddress_RefusedUntilACircuitTransportIsRegistered()
+    public async Task Dial_CircuitAddress_ToANodeThatIsNotARelay_FailsInsteadOfReachingItAsTheDestination()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
@@ -271,27 +271,24 @@ public class SwitchEndToEndTests
 
         IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
 
-        // A routed address: the listening node plays the relay (its
-        // endpoint and identity are the address's prefix); the
+        // A routed address: the listening node is named as the relay
+        // (its endpoint and identity are the address's prefix); the
         // destination exists only as the address's terminal /p2p.
         var circuitAddress = Multiaddress.Decode(
             $"{listener.Address}/p2p-circuit/p2p/{destination.PeerId}");
 
-        // No circuit transport is registered, so the switch refuses at
-        // the address's outermost boundary instead of socket-dialing
-        // the relay's endpoint as if it were the destination's.
-        NotSupportedException? error = Assert.ThrowsAsync<NotSupportedException>(
+        // The circuit transport routes the dial through the named
+        // relay — but this node does not serve as one (the hop server
+        // role is not implemented), so the dial fails at the relay.
+        // What it must never do is fall back to treating the prefix
+        // node as the destination.
+        Assert.ThrowsAsync<PeerConnectionException>(
             async () => await dialerNode.Switch.DialAsync(circuitAddress, cts.Token));
-        Assert.That(error!.Message, Does.Contain("p2p-circuit"));
 
         // The peer the dial seeded from the address is the destination
-        // (the terminal /p2p), never the relay.
+        // (the terminal /p2p), as routed addresses require.
         var dialer = (ManagedPeerSwitch)dialerNode.Switch;
         Assert.That(dialer.RemotePeers.ContainsKey(destination), Is.True);
-        Assert.That(dialer.RemotePeers.ContainsKey(listenerNode.Peer.Identity), Is.False);
-
-        // And nothing ever connected to the "relay".
-        Assert.That(((ManagedPeerSwitch)listenerNode.Switch).RemotePeers.IsEmpty, Is.True);
 
         await listener.DisconnectAsync();
     }
