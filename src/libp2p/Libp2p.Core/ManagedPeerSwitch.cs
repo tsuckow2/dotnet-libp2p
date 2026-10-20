@@ -269,7 +269,8 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         // down to the transport, which reports readiness through it.
         // The connections for accepted transports are created per
         // accept through the root factory, each with its own anonymous
-        // remote peer (Identify names it during the handshake).
+        // remote peer (a security-bearing transport names it from the
+        // handshake proof; otherwise Identify names it).
         var listener = new SwitchListener(signalingChannel, localPeer);
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 

@@ -93,4 +93,43 @@ public class QuicEndToEndTests
         await connection.DisconnectAsync();
         await listener.DisconnectAsync();
     }
+
+    [Test]
+    public async Task Listener_NamesInboundPeer_FromItsCertificate()
+    {
+        if (!QuicListener.IsSupported)
+        {
+            Assert.Ignore("QUIC is not supported in this environment (libmsquic missing or IPv6 disabled).");
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        var named = new TaskCompletionSource<Identity>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.OnConnection += peer =>
+        {
+            // Raised as the connection is established, before any
+            // identity protocol can have run on it (inbound streams
+            // are only accepted afterwards). The name can only have
+            // come from the handshake's proof.
+            named.TrySetResult(peer.Identity);
+            return Task.CompletedTask;
+        };
+
+        IRemotePeerConnection connection = await dialerNode.Switch.DialAsync(listener.Address, cts.Token);
+
+        Identity namedByListener = await named.Task.WaitAsync(cts.Token);
+        Assert.That(namedByListener, Is.EqualTo(dialerNode.Peer.Identity));
+
+        // The connection works, and the dialer's Identify passes the
+        // listener's cross-check against the proven identity.
+        await connection.DialAsync<PingProtocol>(cts.Token);
+
+        await connection.DisconnectAsync();
+        await listener.DisconnectAsync();
+    }
 }

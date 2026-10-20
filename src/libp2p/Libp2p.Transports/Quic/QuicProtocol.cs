@@ -116,7 +116,23 @@ public class QuicProtocol : IProtocol, ITransport
             try
             {
                 QuicConnection connection = await listener.AcceptConnectionAsync();
-                _ = ProcessStreams(connection, channelFactory.AcceptConnection(), channelFactory);
+                IRemotePeerConnection accepted = channelFactory.AcceptConnection();
+
+                // The handshake proved the client's identity: its
+                // certificate binds its key (validated during the
+                // handshake; the accepted connection carries that
+                // very certificate). Establish the peer from the
+                // proof, as the dial side does, instead of leaving
+                // the naming of inbound peers to Identify.
+                if (connection.RemoteCertificate is X509Certificate2 clientCertificate &&
+                    CertificateHelper.ValidateCertificate(clientCertificate, null, out Identity? provenIdentity) &&
+                    provenIdentity is not null)
+                {
+                    accepted.ProvenPeerId = provenIdentity.PeerId;
+                    accepted.RemotePeer.Identity = provenIdentity;
+                }
+
+                _ = ProcessStreams(connection, accepted, channelFactory);
             }
             catch (Exception ex)
             {
