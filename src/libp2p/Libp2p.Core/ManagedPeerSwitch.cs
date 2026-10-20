@@ -99,12 +99,17 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         var layers = new List<IProtocol> { NewSelector() };
         if (transport.Id != "quic-v1")
         {
-            IProtocol? security = _protocolRegistry.SecurityProtocols.FirstOrDefault();
-            if (security is not null)
-            {
-                layers.Add(security);
-                layers.Add(NewSelector());
-            }
+            // A stack without a security layer would hand out
+            // connections to whoever answered, with no proof of who
+            // they are — the switch does not assemble those. (A
+            // transport that secures itself, quic-v1, needs none.)
+            // Plaintext counts only if it is deliberately registered
+            // as the security protocol; its absence is never filled
+            // in silently.
+            IProtocol security = _protocolRegistry.SecurityProtocols.FirstOrDefault()
+                ?? throw new InvalidOperationException("No security protocol (e.g. /noise) is registered; the switch does not assemble unsecured stacks.");
+            layers.Add(security);
+            layers.Add(NewSelector());
             IProtocol? muxer = _protocolRegistry.MuxerProtocols.FirstOrDefault();
             if (muxer is not null)
             {

@@ -59,6 +59,51 @@ public class SwitchEndToEndTests
         return (services, services.GetRequiredService<IManagedPeerSwitch>(), localPeer);
     }
 
+    /// <summary>
+    ///     The default stack with the security protocols removed: the
+    ///     switch must refuse to assemble it.
+    /// </summary>
+    private sealed class NoSecurityBuilder(IServiceProvider serviceProvider)
+        : Libp2pPeerFactoryBuilder(serviceProvider)
+    {
+        public void StripSecurity()
+        {
+            ClearSecurityProtocols();
+        }
+    }
+
+    [Test]
+    public void NodeWithoutASecurityProtocol_RefusesToListenOrDial()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var localPeer = new LocalPeer(new Identity());
+        localPeer.GetOrAddAddress("/ip4/127.0.0.1/tcp/0");
+
+        // The full AddLibp2p registrations (the builder's constructor
+        // activates app protocols against them), but the factory is
+        // built by the security-less builder instead.
+        ServiceProvider services = new ServiceCollection()
+            .AddLibp2pLocalPeer(localPeer)
+            .AddLibp2p(builder => builder)
+            .AddLogging()
+            .BuildServiceProvider();
+
+        var builder = new NoSecurityBuilder(services);
+        builder.StripSecurity();
+        var @switch = (IManagedPeerSwitch)builder.Build();
+
+        // No security layer, no stack: "we don't accept plaintext"
+        // holds by construction, not by registration discipline.
+        InvalidOperationException? listenError = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await @switch.ListenAsync(localPeer, cts.Token));
+        Assert.That(listenError!.Message, Does.Contain("security"));
+
+        InvalidOperationException? dialError = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await @switch.DialAsync(Multiaddress.Decode("/ip4/127.0.0.1/tcp/4001"), cts.Token));
+        Assert.That(dialError!.Message, Does.Contain("security"));
+    }
+
     [Test]
     public async Task TwoNodes_Dial_Ping_AndManagedEcho()
     {
