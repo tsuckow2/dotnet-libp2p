@@ -103,13 +103,18 @@ public sealed class HopJob
 ///     One stop request a relay wants performed toward a destination:
 ///     open a stop stream carrying a connection from
 ///     <see cref="Source"/>, then pump it against the hop stream the
-///     relay already holds (<see cref="UpChannel"/>).
+///     relay already holds (<see cref="UpChannel"/>). Pumping waits
+///     for <see cref="Release"/>: the relay must write its CONNECT
+///     status to the dialer before any spliced byte can flow, or the
+///     dialer — still reading that status — receives data-plane
+///     bytes where its handshake belongs.
 /// </summary>
 public sealed class StopJob
 {
     public required PeerId Source { get; init; }
     public required IChannel UpChannel { get; init; }
     public TaskCompletionSource Established { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
 /// <summary>

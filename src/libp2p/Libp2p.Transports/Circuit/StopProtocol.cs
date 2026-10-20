@@ -44,7 +44,14 @@ public class StopProtocol(CircuitJobs jobs, ILoggerFactory? loggerFactory = null
             }
 
             job.Established.TrySetResult();
-            await ChannelPump.BothWaysAsync(channel, job.UpChannel);
+            // The splice starts only when the relay releases it —
+            // after its CONNECT status has been written to the
+            // dialer. Data released earlier would land in the
+            // dialer's handshake read.
+            if (await Task.WhenAny(job.Release.Task, ChannelPump.WhenClosed(channel)) == job.Release.Task)
+            {
+                await ChannelPump.BothWaysAsync(channel, job.UpChannel);
+            }
         }
         catch (Exception e)
         {

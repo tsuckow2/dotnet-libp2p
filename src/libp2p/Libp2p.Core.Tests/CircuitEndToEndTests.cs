@@ -101,7 +101,8 @@ public class CircuitEndToEndTests
                     Type = HopMessageType.Status,
                     Status = CircuitStatus.Ok,
                 });
-                // The stop protocol pumps the splice for its lifetime.
+                // The status is on the wire; now the splice may run.
+                job.Release.TrySetResult();
                 await stopTask;
                 return;
             }
