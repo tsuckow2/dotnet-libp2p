@@ -218,7 +218,21 @@ public class KadClient : ILibp2pStartup
             job.Response.TrySetException(e);
         }
 
-        return await job.Response.Task;
+        // The job wait needs the query's deadline too: a protocol
+        // instance that returns without completing its job (a claim
+        // miss against the connection's addresses, a stream that
+        // stalls in a way the dial never sees) must surface as this
+        // query failing — an unbounded wait here parks the whole
+        // walk behind it, silently and forever.
+        try
+        {
+            return await job.Response.Task.WaitAsync(timeout.Token);
+        }
+        catch (Exception e)
+        {
+            job.Response.TrySetException(e);
+            throw;
+        }
     }
 
     private async Task<IRemotePeerConnection> GetConnectionAsync(KadPeer peer, CancellationToken token)
