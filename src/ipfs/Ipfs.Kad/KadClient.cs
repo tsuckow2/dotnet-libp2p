@@ -347,6 +347,12 @@ public class KadClient : ILibp2pStartup
 
         for (int round = 0; round < MaxRounds; round++)
         {
+            var closestBefore = _peers.Values
+                .OrderBy(peer => SHA256.HashData(peer.Id), new XorDistanceComparer(target))
+                .Take(WalkWidth)
+                .Select(peer => peer.Key)
+                .ToHashSet();
+
             // A peer whose query fails is not written off on the
             // spot — a slow major peer (the bootstrappers crawl
             // under load) deserves a second chance in a later round —
@@ -404,6 +410,25 @@ public class KadClient : ILibp2pStartup
             // Providers in hand and a round that taught us nobody new:
             // the walk has converged for this key.
             if (!improved && providers.Count > 0)
+            {
+                break;
+            }
+
+            // Kademlia convergence: the closest set did not change
+            // this round and every peer in it has been asked (or has
+            // failed twice). Walking on would only interrogate peers
+            // farther from the target than the set already settled —
+            // on the public network that is minutes of ghost-chasing
+            // per key, which made providing a handful of blocks take
+            // the better part of an hour.
+            List<KadPeer> closestNow = _peers.Values
+                .OrderBy(peer => SHA256.HashData(peer.Id), new XorDistanceComparer(target))
+                .Take(WalkWidth)
+                .ToList();
+            bool closestImproved = closestNow.Any(peer => !closestBefore.Contains(peer.Key));
+            bool closestOutstanding = closestNow.Any(peer =>
+                !queried.ContainsKey(peer.Key) && failures.GetValueOrDefault(peer.Key) < 2);
+            if (!closestImproved && !closestOutstanding)
             {
                 break;
             }
