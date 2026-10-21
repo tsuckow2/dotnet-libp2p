@@ -21,7 +21,7 @@ public sealed record KadPeer(byte[] Id, IReadOnlyList<Multiaddress> Addresses)
 
     /// <summary>The addresses with the /p2p/ part appended, ready to dial.</summary>
     public IEnumerable<Multiaddress> DialAddresses => Addresses.Select(addr =>
-        addr.Get<P2P>() is not null
+        addr.TerminalP2P() is not null
             ? addr
             : (Multiaddress)$"{addr}/p2p/{PeerId}");
 

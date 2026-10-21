@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using Microsoft.Extensions.Logging;
 using Multiformats.Address;
 using Multiformats.Address.Protocols;
 using Nethermind.Libp2p.Core;
@@ -15,8 +16,10 @@ namespace Nethermind.Ipfs.Kad;
 ///     the listen half answers from the node's <see cref="IKadPeerTable"/>
 ///     (empty answers when the node is client-only).
 /// </summary>
-public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = null) : IProtocol
+public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = null, ILoggerFactory? loggerFactory = null) : IProtocol
 {
+    private readonly ILogger? _logger = loggerFactory?.CreateLogger<KadDhtProtocol>();
+
     public string Id => KadDht.ProtocolId;
 
     public async Task DialAsync(IChannel channel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
@@ -28,16 +31,27 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
 
         // The job is claimed by the peer id the client dialed, which
         // the remote peer's address book carries in its addresses'
-        // /p2p/ parts. The connection's remote identity cannot key
-        // the claim: for hashed peer ids (e.g. RSA) it is still the
-        // switch's placeholder at this point.
+        // terminal /p2p/ parts. The connection's remote identity
+        // cannot key the claim: for hashed peer ids (e.g. RSA) it is
+        // still the switch's placeholder at this point. TerminalP2P,
+        // not Get<P2P>: the book also holds the addresses Identify
+        // absorbed, and a peer reachable through a relay advertises
+        // /p2p-circuit addresses carrying two /p2p parts — Get<P2P>
+        // throws on those, which used to kill the claim (and orphan
+        // the job until the client's query deadline) whenever such
+        // an address enumerated first.
+        List<string> candidates = connection.RemotePeer.Addresses.Keys
+            .Select(addr => addr.TerminalP2P()?.ToString())
+            .Where(id => id is not null)
+            .Distinct()
+            .Cast<string>()
+            .ToList();
+        _logger?.LogDebug("Kad claim for {peer}: {count} candidate id(s) in the address book",
+            connection.RemotePeer.Identity.PeerId, candidates.Count);
         KadJob? job = null;
-        foreach (string candidate in connection.RemotePeer.Addresses.Keys
-                     .Select(addr => addr.Get<P2P>()?.ToString())
-                     .Where(id => id is not null)
-                     .Distinct())
+        foreach (string candidate in candidates)
         {
-            job = client.ClaimJob(new PeerId(candidate!).Bytes);
+            job = client.ClaimJob(new PeerId(candidate).Bytes);
             if (job is not null)
             {
                 break;
@@ -54,11 +68,17 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
         try
         {
             await KadWire.WriteMessageAsync(channel, job.Request);
+            _logger?.LogDebug("Kad query {type} written to {peer}; awaiting the response",
+                job.Request.type, connection.RemotePeer.Identity.PeerId);
             Message response = await KadWire.ReadMessageAsync(channel);
+            _logger?.LogDebug("Kad response from {peer}: {closer} closer, {providers} providers",
+                connection.RemotePeer.Identity.PeerId, response.closerPeers?.Count ?? 0, response.providerPeers?.Count ?? 0);
             job.Response.TrySetResult(response);
         }
         catch (Exception e)
         {
+            _logger?.LogDebug("Kad query to {peer} faulted in the protocol: {error}",
+                connection.RemotePeer.Identity.PeerId, e);
             job.Response.TrySetException(e);
             throw;
         }

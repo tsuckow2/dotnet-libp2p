@@ -171,7 +171,7 @@ public class KadClient : ILibp2pStartup
         try
         {
             addr = address;
-            peerId = addr.Get<P2P>()?.ToString();
+            peerId = addr.TerminalP2P()?.ToString();
         }
         catch (Exception e) when (e is FormatException or NotSupportedException or InvalidOperationException)
         {
