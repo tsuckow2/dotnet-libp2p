@@ -45,8 +45,18 @@ public class CircuitTransport(IServiceProvider serviceProvider, CircuitJobs jobs
     public async Task DialAsync(IChannel signalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
         ArgumentNullException.ThrowIfNull(channelFactory);
-        using var lifetime = new CancellationTokenSource();
-        signalingChannel.GetAwaiter().OnCompleted(() => lifetime.Cancel());
+        // The source lives until the connection's channel completes
+        // — which can be after this method returns (the hop stream
+        // can end while the connection is still being torn down) —
+        // so the completion callback, not a using, owns its end:
+        // a Cancel on a disposed source throws, unhandled, on a
+        // thread-pool continuation.
+        var lifetime = new CancellationTokenSource();
+        signalingChannel.GetAwaiter().OnCompleted(() =>
+        {
+            lifetime.Cancel();
+            lifetime.Dispose();
+        });
 
         Multiaddress addr = connection.RemotePeer.Address;
         (Multiaddress relayAddress, PeerId destination) = Cut(addr);
@@ -79,8 +89,12 @@ public class CircuitTransport(IServiceProvider serviceProvider, CircuitJobs jobs
     public async Task ListenAsync(IChannel signalingChannel, IChannelFactory? channelFactory, IRemotePeerConnection shell)
     {
         ArgumentNullException.ThrowIfNull(channelFactory);
-        using var lifetime = new CancellationTokenSource();
-        signalingChannel.GetAwaiter().OnCompleted(() => lifetime.Cancel());
+        var lifetime = new CancellationTokenSource();
+        signalingChannel.GetAwaiter().OnCompleted(() =>
+        {
+            lifetime.Cancel();
+            lifetime.Dispose();
+        });
 
         // The listen address names the relay to reserve on:
         // <relay>/p2p-circuit/p2p/<us>. The switch stamps the local
