@@ -24,9 +24,11 @@ public class KadLookupTests
     {
         public Func<byte[], IReadOnlyList<KadPeer>> Closer { get; set; } = _ => [];
         public Func<byte[], IReadOnlyList<KadPeer>> Providers { get; set; } = _ => [];
+        public List<(byte[] Key, KadPeer Provider)> AddedProviders { get; } = [];
 
         public IReadOnlyList<KadPeer> GetCloserPeers(byte[] target, int count) => Closer(target);
         public IReadOnlyList<KadPeer> GetProviders(byte[] key) => Providers(key);
+        public void AddProvider(byte[] key, KadPeer provider) => AddedProviders.Add((key, provider));
     }
 
     private sealed record Node(

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using Multiformats.Address;
 using Multiformats.Address.Protocols;
 using Nethermind.Libp2p.Core;
 
@@ -66,7 +67,51 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
     public async Task ListenAsync(IChannel channel, IChannelFactory? channelFactory, IRemotePeerConnection connection)
     {
         Message request = await KadWire.ReadMessageAsync(channel);
+        if (request.type is MessageType.AddProvider && table is not null)
+        {
+            RecordProvider(request, connection);
+        }
+
+        // A node that asks us questions is a peer worth knowing:
+        // real DHT servers route by everyone who talks to them.
+        if (client is not null && connection.RemotePeer.Addresses.Count > 0)
+        {
+            client.AddPeer(new KadPeer(
+                connection.RemotePeer.Identity.PeerId.Bytes,
+                connection.RemotePeer.Addresses.Keys.ToArray()));
+        }
+
         await KadWire.WriteMessageAsync(channel, Answer(request));
+    }
+
+    /// <summary>
+    ///     Records an ADD_PROVIDER announcement. A peer announces
+    ///     only itself: the stored record must name the peer on
+    ///     this connection — whose identity the security layer
+    ///     proved during establishment — never a third party the
+    ///     announcer merely claims to speak for.
+    /// </summary>
+    private void RecordProvider(Message request, IRemotePeerConnection connection)
+    {
+        if (request.key is not { Length: > 0 } key)
+        {
+            return;
+        }
+
+        byte[] announcer = connection.RemotePeer.Identity.PeerId.Bytes;
+        foreach (Peer wire in request.providerPeers ?? [])
+        {
+            if (!wire.id.AsSpan().SequenceEqual(announcer))
+            {
+                continue;
+            }
+
+            KadPeer announced = KadPeer.FromWire(wire);
+            Multiaddress[] addresses = announced.Addresses
+                .Union(connection.RemotePeer.Addresses.Keys)
+                .ToArray();
+            table!.AddProvider(key, announced with { Addresses = addresses });
+        }
     }
 
     private Message Answer(Message request)

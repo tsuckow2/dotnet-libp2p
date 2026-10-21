@@ -269,6 +269,67 @@ public class KadClient : ILibp2pStartup
         return outcome.Providers;
     }
 
+    private ProviderStore? _store;
+
+    private ProviderStore? Store => _store ??= _serviceProvider.GetService<ProviderStore>();
+
+    /// <summary>
+    ///     Announces that this node provides the block with this
+    ///     multihash: the record is kept locally (peers that ask us
+    ///     directly get the answer even if parts of the announce
+    ///     fail) and sent by ADD_PROVIDER to the closest peers the
+    ///     walk finds — the peers a lookup for this key converges
+    ///     on, which is where the network keeps provider records.
+    ///     Returns that closest set. Announces are best-effort per
+    ///     peer: some implementations close an ADD_PROVIDER stream
+    ///     without a response, which reads as a failure here even
+    ///     though the record was delivered.
+    /// </summary>
+    public async Task<IReadOnlyList<KadPeer>> ProvideAsync(byte[] key, CancellationToken token = default)
+    {
+        KadPeer self = SelfPeer();
+        Store?.Add(key, self);
+
+        LookupOutcome outcome = await LookupAsync(MessageType.FindNode, key, token);
+
+        var announcement = new Message
+        {
+            type = MessageType.AddProvider,
+            key = key,
+            providerPeers = [self.ToWire()],
+        };
+        await Task.WhenAll(outcome.Closest
+            .Where(peer => peer.Key != self.Key)
+            .Select(async peer =>
+            {
+                try
+                {
+                    await QueryAsync(peer, announcement, token);
+                }
+                catch (Exception e)
+                {
+                    _logger?.LogDebug("Kad provide to {peer} failed: {error}", peer.PeerId, e.Message);
+                }
+            }));
+        return outcome.Closest;
+    }
+
+    /// <summary>This node as a Kad peer: its id and the addresses it is reachable at.</summary>
+    private KadPeer SelfPeer()
+    {
+        ILocalPeer localPeer = _serviceProvider.GetService<ILocalPeer>()
+            ?? throw new InvalidOperationException(
+                "Providing requires the node's local peer to be registered (AddLibp2pLocalPeer).");
+        var addresses = new List<Multiaddress>();
+        if (localPeer.Address is { } primary)
+        {
+            addresses.Add(primary);
+        }
+
+        addresses.AddRange(localPeer.Addresses.Keys);
+        return new KadPeer(localPeer.Identity.PeerId.Bytes, addresses.Distinct().ToArray());
+    }
+
     private sealed record LookupOutcome(IReadOnlyList<KadPeer> Providers, IReadOnlyList<KadPeer> Closest);
 
     private async Task<LookupOutcome> LookupAsync(MessageType type, byte[] key, CancellationToken token)
@@ -355,22 +416,23 @@ public class KadClient : ILibp2pStartup
         return new LookupOutcome(providers.Values.ToList(), closest);
     }
 
-    /// <summary>Compares two keyspace ids by their XOR distance to a target.</summary>
-    private sealed class XorDistanceComparer(byte[] target) : IComparer<byte[]>
-    {
-        public int Compare(byte[]? x, byte[]? y)
-        {
-            for (int i = 0; i < target.Length; i++)
-            {
-                int dx = x![i] ^ target[i];
-                int dy = y![i] ^ target[i];
-                if (dx != dy)
-                {
-                    return dx.CompareTo(dy);
-                }
-            }
+}
 
-            return 0;
+/// <summary>Compares two keyspace ids by their XOR distance to a target.</summary>
+internal sealed class XorDistanceComparer(byte[] target) : IComparer<byte[]>
+{
+    public int Compare(byte[]? x, byte[]? y)
+    {
+        for (int i = 0; i < target.Length; i++)
+        {
+            int dx = x![i] ^ target[i];
+            int dy = y![i] ^ target[i];
+            if (dx != dy)
+            {
+                return dx.CompareTo(dy);
+            }
         }
+
+        return 0;
     }
 }

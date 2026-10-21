@@ -13,7 +13,8 @@ using Nethermind.Libp2p.Stack;
 
 // A consumer of the Nethermind.Ipfs libraries:
 //
-//   serve <file> [port]                 seed a file and serve it (Bitswap)
+//   serve <file> [port]                 seed a file, announce it on
+//                                       the DHT, and serve it (Bitswap)
 //   get <peer-address> <root-id> <out>  download it from that peer
 //   providers <multihash-hex>           find a block's providers on the
 //                                       public DHT, from bootstrap only
@@ -145,6 +146,38 @@ else if (args[0] == "serve")
     IListener listener = await peerSwitch.ListenAsync(localPeer, cts.Token);
     logger.LogInformation("Serving at {address}", listener.Address);
     logger.LogInformation("Root id: {rootId}", Convert.ToHexString(rootId));
+
+    // Announce every block to the peers closest to it, and keep
+    // announcing: provider records expire (a day on this
+    // implementation, similar on others), so a long-running seed
+    // re-provides or it fades out of the network's answers.
+    KadClient kad = services.GetRequiredService<KadClient>();
+    async Task ProvideAllAsync()
+    {
+        IReadOnlyCollection<byte[]> blockIds = store.StoredBlockIds;
+        foreach (byte[] blockId in blockIds)
+        {
+            await kad.ProvideAsync(blockId, cts.Token);
+        }
+
+        logger.LogInformation("Provided {count} block record(s) to the DHT", blockIds.Count);
+    }
+
+    await ProvideAllAsync();
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromHours(12), cts.Token);
+                await ProvideAllAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    });
 
     try
     {

@@ -27,4 +27,10 @@ public class InMemoryBlockStore : IBlockStore
         _blocks[BlockIds.Key(blockId)] = data;
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    ///     The multihashes of every block currently stored — what a
+    ///     provider announces to the DHT for this store.
+    /// </summary>
+    public IReadOnlyCollection<byte[]> StoredBlockIds => _blocks.Keys.Select(BlockIds.FromHex).ToArray();
 }

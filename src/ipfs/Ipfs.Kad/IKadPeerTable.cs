@@ -15,4 +15,7 @@ public interface IKadPeerTable
 
     /// <summary>The known providers of the block with this multihash.</summary>
     IReadOnlyList<KadPeer> GetProviders(byte[] key);
+
+    /// <summary>Records a provider for a block (an ADD_PROVIDER announcement, or this node's own providing).</summary>
+    void AddProvider(byte[] key, KadPeer provider);
 }
