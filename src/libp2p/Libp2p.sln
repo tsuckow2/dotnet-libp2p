@@ -89,6 +89,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Libp2p.Transports", "Libp2p
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Libp2p.Protocols.Circuit", "Libp2p.Transports\Circuit\Libp2p.Protocols.Circuit.csproj", "{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.Status", "..\ipfs\Ipfs.Status\Ipfs.Status.csproj", "{9AE98841-01AF-49C5-B6AD-B46EFB1C2791}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.Status.Tests", "..\ipfs\Ipfs.Status.Tests\Ipfs.Status.Tests.csproj", "{F60BA999-B732-4CB2-9E44-EFB364801144}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -243,6 +247,14 @@ Global
 		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{348C980D-EF5F-4028-85E5-DB6F6F5A11AA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9AE98841-01AF-49C5-B6AD-B46EFB1C2791}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9AE98841-01AF-49C5-B6AD-B46EFB1C2791}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9AE98841-01AF-49C5-B6AD-B46EFB1C2791}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9AE98841-01AF-49C5-B6AD-B46EFB1C2791}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F60BA999-B732-4CB2-9E44-EFB364801144}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F60BA999-B732-4CB2-9E44-EFB364801144}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F60BA999-B732-4CB2-9E44-EFB364801144}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F60BA999-B732-4CB2-9E44-EFB364801144}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -50,5 +50,6 @@ jobs:
           dotnet test Libp2p.Protocols.Yamux.Tests ${{ env.TEST_OPTS }}
           dotnet test Libp2p.Transports/Quic.Tests ${{ env.TEST_OPTS }}
           dotnet test ../ipfs/Ipfs.Kad.Tests ${{ env.TEST_OPTS }}
+          dotnet test ../ipfs/Ipfs.Status.Tests ${{ env.TEST_OPTS }}
           dotnet test ../ipfs/Ipfs.Bitswap.Tests ${{ env.TEST_OPTS }}
           dotnet test ../ipfs/Ipfs.UnixFs.Tests ${{ env.TEST_OPTS }}

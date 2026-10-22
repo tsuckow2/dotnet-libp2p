@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Multiformats.Address;
 using Nethermind.Ipfs.Bitswap;
 using Nethermind.Ipfs.Kad;
+using Nethermind.Ipfs.Status;
 using Nethermind.Ipfs.UnixFs;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Extensions;
@@ -39,7 +40,7 @@ var store = new InMemoryBlockStore();
 var localPeer = new LocalPeer(new Identity());
 localPeer.GetOrAddAddress("/ip4/0.0.0.0/tcp/0");
 
-ServiceProvider services = new ServiceCollection()
+var serviceCollection = new ServiceCollection()
     .AddSingleton<IBlockStore>(store)
     .AddKadDht()
     .AddLibp2pLocalPeer(localPeer)
@@ -53,8 +54,23 @@ ServiceProvider services = new ServiceCollection()
             {
                 l.SingleLine = true;
                 l.TimestampFormat = "[HH:mm:ss.FFF]";
-            }))
-    .BuildServiceProvider();
+            }));
+
+// Serving is the long-lived mode: it also hosts the live status
+// page (connections, peers, DHT) on loopback — IPFS_STATUS_PORT=0
+// turns it off, IPFS_STATUS_BIND widens the bind deliberately.
+if (args[0] == "serve"
+    && int.TryParse(Environment.GetEnvironmentVariable("IPFS_STATUS_PORT") ?? "8190", out int statusPort)
+    && statusPort > 0)
+{
+    serviceCollection.AddIpfsStatus(options =>
+    {
+        options.Port = statusPort;
+        options.BindAddress = Environment.GetEnvironmentVariable("IPFS_STATUS_BIND") ?? "127.0.0.1";
+    });
+}
+
+ServiceProvider services = serviceCollection.BuildServiceProvider();
 
 ILogger logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("IPFS");
 IManagedPeerSwitch peerSwitch = services.GetRequiredService<IManagedPeerSwitch>();
