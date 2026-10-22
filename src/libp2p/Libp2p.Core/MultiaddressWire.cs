@@ -4,9 +4,8 @@
 using System.Net;
 using System.Text;
 using Multiformats.Address;
-using Nethermind.Libp2p.Core;
 
-namespace Nethermind.Ipfs.Kad;
+namespace Nethermind.Libp2p.Core;
 
 /// <summary>
 ///     Multiaddrs in their canonical binary form, as DHT (and
@@ -19,7 +18,7 @@ namespace Nethermind.Ipfs.Kad;
 ///     through the string form, which is well-tested: bytes are
 ///     parsed to a string here, and the library parses the string.
 /// </summary>
-internal static class MultiaddressWire
+public static class MultiaddressWire
 {
     private enum Shape
     {
