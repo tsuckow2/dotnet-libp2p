@@ -135,6 +135,13 @@ internal class RemotePeerConnection : IRemotePeerConnection
     /// </summary>
     internal Action<Identity>? PeerIdentifiedCallback { get; set; }
 
+    /// <summary>
+    ///     Installed by the switch on connections it creates: run
+    ///     when the connection's teardown has completed, so the
+    ///     switch can stop tracking it as live.
+    /// </summary>
+    internal Action? DisconnectedCallback { get; set; }
+
     public void Connected()
     {
         ConnectedCallback?.Invoke();
@@ -147,25 +154,33 @@ internal class RemotePeerConnection : IRemotePeerConnection
 
     public async Task DisconnectAsync()
     {
-        // Connections layered over this one ride on its streams;
-        // they end with it, disconnected explicitly rather than left
-        // to notice a dead stream.
-        IRemotePeerConnection[] layered = _layeredConnections.Keys.ToArray();
-        _layeredConnections.Clear();
-        foreach (IRemotePeerConnection connection in layered)
+        try
         {
-            try
+            // Connections layered over this one ride on its streams;
+            // they end with it, disconnected explicitly rather than left
+            // to notice a dead stream.
+            IRemotePeerConnection[] layered = _layeredConnections.Keys.ToArray();
+            _layeredConnections.Clear();
+            foreach (IRemotePeerConnection connection in layered)
             {
-                await connection.DisconnectAsync();
+                try
+                {
+                    await connection.DisconnectAsync();
+                }
+                catch
+                {
+                    // A layered connection failing to disconnect does
+                    // not stop the rest of the teardown.
+                }
             }
-            catch
-            {
-                // A layered connection failing to disconnect does
-                // not stop the rest of the teardown.
-            }
-        }
 
-        ParentConnection = null;
-        await _disconnect();
+            ParentConnection = null;
+
+            await _disconnect();
+        }
+        finally
+        {
+            DisconnectedCallback?.Invoke();
+        }
     }
 }

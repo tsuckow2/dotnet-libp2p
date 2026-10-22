@@ -17,12 +17,24 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
     private readonly IServiceProvider _serviceProvider;
     private readonly IReadOnlyList<IProtocol> _managedAdapters;
     private readonly ConcurrentDictionary<Identity, IRemotePeer> _remotePeers = new();
+    private readonly ConcurrentDictionary<IRemotePeerConnection, DateTimeOffset> _liveConnections = new();
 
     public IProtocolRegistry ProtocolRegistry => _protocolRegistry;
 
     public ILocalPeer LocalPeer => _localPeer;
 
     public ConcurrentDictionary<Identity, IRemotePeer> RemotePeers => _remotePeers;
+
+    IReadOnlyDictionary<Identity, IRemotePeer> IManagedPeerSwitch.RemotePeers => _remotePeers;
+
+    /// <summary>
+    ///     The connections this switch has established and not yet
+    ///     seen disconnect, each with the moment it was established.
+    ///     A connection joins when its stack reports establishment
+    ///     and leaves when its teardown completes; the live view of
+    ///     the node's wiring, for status and diagnostics.
+    /// </summary>
+    public IReadOnlyDictionary<IRemotePeerConnection, DateTimeOffset> LiveConnections => _liveConnections;
 
     public ManagedPeerSwitch(ILocalPeer localPeer, IProtocolRegistry protocolRegistry, IServiceProvider serviceProvider)
         : this(localPeer, protocolRegistry, serviceProvider, null)
@@ -188,8 +200,10 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
             {
                 _remotePeers[remotePeer.Identity] = remotePeer;
             }
+            _liveConnections[connection] = DateTimeOffset.UtcNow;
             onConnected(connection);
         };
+        connection.DisconnectedCallback = () => _liveConnections.TryRemove(connection, out _);
         connection.PeerIdentifiedCallback = previous => Canonicalize(connection, previous);
         return connection;
     }

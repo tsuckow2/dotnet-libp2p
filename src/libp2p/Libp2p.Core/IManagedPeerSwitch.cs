@@ -32,4 +32,17 @@ public interface IManagedPeerSwitch : IPeerFactory
     ///     DialAsync(IRemotePeer) dials across.
     /// </summary>
     IRemotePeer GetRemotePeer(Identity identity);
+
+    /// <summary>
+    ///     Every remote peer the switch holds a book for, by identity.
+    /// </summary>
+    IReadOnlyDictionary<Identity, IRemotePeer> RemotePeers { get; }
+
+    /// <summary>
+    ///     The connections currently established through this switch,
+    ///     each with the moment it was established. A connection
+    ///     joins when its stack reports establishment and leaves
+    ///     when its teardown completes.
+    /// </summary>
+    IReadOnlyDictionary<IRemotePeerConnection, DateTimeOffset> LiveConnections { get; }
 }
