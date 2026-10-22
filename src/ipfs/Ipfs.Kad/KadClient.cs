@@ -334,14 +334,29 @@ public class KadClient : ILibp2pStartup
         ILocalPeer localPeer = _serviceProvider.GetService<ILocalPeer>()
             ?? throw new InvalidOperationException(
                 "Providing requires the node's local peer to be registered (AddLibp2pLocalPeer).");
-        var addresses = new List<Multiaddress>();
-        if (localPeer.Address is { } primary)
+        // Announce the advertised set: the addresses the node can
+        // truthfully be reached at, with their evidence earned.
+        // Public DHT servers filter wildcard, private, and
+        // unspecified forms out of provider records before storing
+        // them, so announcing the raw book (a wildcard template
+        // plus whatever accumulated) produced records that came
+        // back address-less. When nothing has been earned yet the
+        // raw book is announced as before — on a LAN there is no
+        // filter, and an address-less record helps no one.
+        IReadOnlyList<Multiaddress> advertised = localPeer.AdvertisedAddresses();
+        if (advertised.Count == 0)
         {
-            addresses.Add(primary);
+            var addresses = new List<Multiaddress>();
+            if (localPeer.Address is { } primary)
+            {
+                addresses.Add(primary);
+            }
+
+            addresses.AddRange(localPeer.Addresses.Keys);
+            advertised = addresses.Distinct().ToArray();
         }
 
-        addresses.AddRange(localPeer.Addresses.Keys);
-        return new KadPeer(localPeer.Identity.PeerId.Bytes, addresses.Distinct().ToArray());
+        return new KadPeer(localPeer.Identity.PeerId.Bytes, advertised);
     }
 
     private sealed record LookupOutcome(IReadOnlyList<KadPeer> Providers, IReadOnlyList<KadPeer> Closest);
