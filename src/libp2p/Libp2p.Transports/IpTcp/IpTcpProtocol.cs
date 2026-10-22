@@ -53,6 +53,7 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
             connection.LocalPeer.Address = connection.LocalPeer.Address
                 .ReplaceOrAdd<TCP>(localIpEndpoint.Port);
         }
+        connection.LocalPeer.ExpandWildcardListener(connection.LocalPeer.Address);
 
         _logger?.LogDebug("Ready to handle connections");
         connection.ListenerReady();

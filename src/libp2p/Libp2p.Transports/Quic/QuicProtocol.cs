@@ -109,6 +109,7 @@ public class QuicProtocol : IProtocol, ITransport
             peerConnection.LocalPeer.Address = peerConnection.LocalPeer.Address
                 .ReplaceOrAdd<UDP>(listener.LocalEndPoint.Port);
         }
+        peerConnection.LocalPeer.ExpandWildcardListener(peerConnection.LocalPeer.Address);
 
 
         _logger?.ReadyToHandleConnections();

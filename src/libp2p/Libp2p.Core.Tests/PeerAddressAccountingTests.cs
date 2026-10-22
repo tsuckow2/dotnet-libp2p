@@ -108,3 +108,34 @@ public class AdvertisedAddressesTests
             "the candidate carries the observed IP at the listener's own port, not the reporting connection's");
     }
 }
+
+public class WildcardExpansionTests
+{
+    [Test]
+    public void WildcardListener_GainsConcreteInterfaceForms()
+    {
+        var peer = new LocalPeer(new Identity());
+        Multiaddress wildcard = Multiaddress.Decode("/ip4/0.0.0.0/tcp/4001");
+        peer.GetOrAddAddress(wildcard);
+
+        peer.ExpandWildcardListener(wildcard);
+
+        (Multiaddress address, PeerAddressAccounting accounting) = peer.Addresses
+            .Single(pair => pair.Key.ToString() == "/ip4/127.0.0.1/tcp/4001");
+        Assert.That(accounting.Sources, Is.EqualTo(AddressSource.Interface));
+        Assert.That(peer.AdvertisedAddresses().Select(a => a.ToString()),
+            Does.Contain("/ip4/127.0.0.1/tcp/4001"));
+    }
+
+    [Test]
+    public void ConcreteListener_IsLeftAlone()
+    {
+        var peer = new LocalPeer(new Identity());
+        Multiaddress concrete = Multiaddress.Decode("/ip4/192.0.2.1/tcp/4001");
+        peer.GetOrAddAddress(concrete);
+
+        peer.ExpandWildcardListener(concrete);
+
+        Assert.That(peer.Addresses, Has.Count.EqualTo(1));
+    }
+}

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using Multiformats.Address;
 using Multiformats.Address.Protocols;
 
@@ -97,6 +99,58 @@ public static class LocalPeerAddresses
             {
                 peer.GetOrAddByValue(Multiaddress.Decode(candidate))
                     .RecordVouch(reporterPeerId, AddressSource.Observed);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Expands a bound listener's address over the machine's
+    ///     interfaces: a wildcard address binds every interface but
+    ///     can be advertised to none of them, so each up interface
+    ///     contributes its concrete form of the same listen shape
+    ///     (same port and suffix) to the book, marked as
+    ///     interface-sourced. Non-wildcard listeners already name
+    ///     their address; nothing is added for them.
+    /// </summary>
+    public static void ExpandWildcardListener(this ILocalPeer peer, Multiaddress listenerAddress)
+    {
+        string[] parts = listenerAddress.ToString().Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2 || parts[0] is not ("ip4" or "ip6"))
+        {
+            return;
+        }
+
+        bool wildcard = parts[0] == "ip4" ? parts[1] == "0.0.0.0" : parts[1] == "::";
+        if (!wildcard)
+        {
+            return;
+        }
+
+        AddressFamily family = parts[0] == "ip4" ? AddressFamily.InterNetwork : AddressFamily.InterNetworkV6;
+        foreach (string interfaceIp in InterfaceAddresses(family))
+        {
+            parts[1] = interfaceIp;
+            peer.GetOrAddByValue(Multiaddress.Decode("/" + string.Join("/", parts)))
+                .RecordSource(AddressSource.Interface);
+        }
+    }
+
+    private static IEnumerable<string> InterfaceAddresses(AddressFamily family)
+    {
+        var seen = new HashSet<string>();
+        foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (networkInterface.OperationalStatus != OperationalStatus.Up)
+            {
+                continue;
+            }
+
+            foreach (UnicastIPAddressInformation unicast in networkInterface.GetIPProperties().UnicastAddresses)
+            {
+                if (unicast.Address.AddressFamily == family && seen.Add(unicast.Address.ToString()))
+                {
+                    yield return unicast.Address.ToString();
+                }
             }
         }
     }
