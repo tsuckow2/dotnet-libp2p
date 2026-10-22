@@ -51,6 +51,28 @@ public sealed class ProviderStore
         return peers.Values.Select(entry => entry.Peer).ToArray();
     }
 
+    /// <summary>One stored provider record, as <see cref="Snapshot"/> reports it.</summary>
+    public sealed record ProviderRecord(byte[] Key, KadPeer Provider, DateTimeOffset Expires);
+
+    /// <summary>
+    ///     Every live record in the store, expired ones pruned as
+    ///     they are passed — the whole of what this node would
+    ///     answer GET_PROVIDERS with, for status and diagnostics.
+    /// </summary>
+    public IReadOnlyList<ProviderRecord> Snapshot()
+    {
+        var records = new List<ProviderRecord>();
+        foreach (KeyValuePair<string, ConcurrentDictionary<string, Entry>> byKey in _byKey)
+        {
+            Prune(byKey.Value);
+            byte[] key = Convert.FromHexString(byKey.Key);
+            records.AddRange(byKey.Value.Values.Select(
+                entry => new ProviderRecord(key, entry.Peer, entry.Expires)));
+        }
+
+        return records;
+    }
+
     private static void Prune(ConcurrentDictionary<string, Entry> peers)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
