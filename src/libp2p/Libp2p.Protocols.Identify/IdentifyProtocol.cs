@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using Google.Protobuf;
+using Multiformats.Address;
 using Nethermind.Libp2p.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -69,6 +70,39 @@ public class IdentifyProtocol : IIdentityProtocol
         {
             throw new PeerConnectionException();
         }
+
+        // The identity is settled, so the rest of the message can be
+        // taken as this peer's word: its listen addresses enter its
+        // book as self-claims, and the address it observes us at is
+        // a vouch for our public form (recorded as an observation;
+        // the advertised set decides when enough peers agree).
+        string peerId = connection.RemotePeer.Identity.PeerId.ToString();
+        foreach (ByteString claimedBytes in identity.ListenAddrs)
+        {
+            try
+            {
+                Multiaddress claimed = MultiaddressWire.Decode(claimedBytes.ToByteArray());
+                connection.RemotePeer.GetOrAddByValue(claimed)
+                    .RecordVouch(peerId, AddressSource.SelfClaimed);
+            }
+            catch (Exception e) when (e is FormatException or NotSupportedException)
+            {
+                _logger?.LogDebug("Unparsable listen address in Identify from {peer}", peerId);
+            }
+        }
+
+        if (identity.ObservedAddr is { IsEmpty: false } observedBytes)
+        {
+            try
+            {
+                Multiaddress observed = MultiaddressWire.Decode(observedBytes.ToByteArray());
+                connection.LocalPeer.RecordObservedAddress(observed, peerId);
+            }
+            catch (Exception e) when (e is FormatException or NotSupportedException)
+            {
+                _logger?.LogDebug("Unparsable observed address in Identify from {peer}", peerId);
+            }
+        }
     }
 
     public async Task ListenAsync(IChannel channel, IChannelFactory? channelFactory,
@@ -76,13 +110,23 @@ public class IdentifyProtocol : IIdentityProtocol
     {
         _logger?.LogInformation("Listen");
 
+        // Advertise the book's earned set (the primary address's
+        // connection endpoint only when nothing has been earned
+        // yet), with the peer id left to the PublicKey field where
+        // the protocol carries it, and report the address we
+        // observe the dialer at — its public form as we see it.
+        IReadOnlyList<Multiaddress> advertised = connection.LocalPeer.AdvertisedAddresses();
+        IEnumerable<Multiaddress> listenAddrs = advertised.Count > 0
+            ? advertised.Select(WithoutPeerId)
+            : [connection.LocalEndpoint!];
+
         Identify.Dto.Identify identify = new()
         {
             ProtocolVersion = _protocolVersion,
             AgentVersion = _agentVersion,
             PublicKey = connection.LocalPeer.Identity.PublicKey.ToByteString(),
-            ListenAddrs = { ByteString.CopyFrom(connection.LocalEndpoint!.ToBytes()) },
-            ObservedAddr = ByteString.CopyFrom(connection.RemoteEndpoint!.ToBytes()),
+            ListenAddrs = { listenAddrs.Select(addr => ByteString.CopyFrom(MultiaddressWire.Encode(addr))) },
+            ObservedAddr = ByteString.CopyFrom(MultiaddressWire.Encode(connection.RemoteEndpoint!)),
             Protocols = { PeerFactoryBuilder.AppLayerProtocols.Select(p => p.Id) }
         };
         byte[] ar = new byte[identify.CalculateSize()];
@@ -90,5 +134,15 @@ public class IdentifyProtocol : IIdentityProtocol
 
         await channel.WriteSizeAndDataAsync(ar);
         _logger?.LogDebug("Sent peer info {identify}", identify);
+    }
+
+    private static Multiaddress WithoutPeerId(Multiaddress address)
+    {
+        string form = address.ToString();
+        int lastSlash = form.LastIndexOf('/');
+        int protocolSlash = lastSlash > 0 ? form.LastIndexOf('/', lastSlash - 1) : -1;
+        return protocolSlash > 0 && form[(protocolSlash + 1)..lastSlash] == "p2p"
+            ? Multiaddress.Decode(form[..protocolSlash])
+            : address;
     }
 }

@@ -96,14 +96,14 @@ public class PeerAddressAccounting
         RaiseMax(ref _lastConfirmedTicks, DateTimeOffset.UtcNow.UtcTicks);
     }
 
-    internal void RecordFailedDial()
+    public void RecordFailedDial()
     {
         Interlocked.Increment(ref _failedDials);
         RaiseMax(ref _lastFailureTicks, DateTimeOffset.UtcNow.UtcTicks);
         Confirm();
     }
 
-    internal void RecordSuccessfulDial()
+    public void RecordSuccessfulDial()
     {
         Interlocked.Increment(ref _successfulDials);
         RaiseMax(ref _lastSuccessTicks, DateTimeOffset.UtcNow.UtcTicks);
@@ -117,7 +117,7 @@ public class PeerAddressAccounting
     ///     The voucher is the reporting peer's id — the same peer
     ///     vouching twice is still one voice.
     /// </summary>
-    internal void RecordVouch(string voucherPeerId, AddressSource source)
+    public void RecordVouch(string voucherPeerId, AddressSource source)
     {
         lock (_vouchersGate)
         {
@@ -130,7 +130,7 @@ public class PeerAddressAccounting
         Confirm();
     }
 
-    internal void RecordSource(AddressSource source)
+    public void RecordSource(AddressSource source)
     {
         int add = (int)source;
         int current;

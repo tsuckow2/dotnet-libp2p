@@ -159,6 +159,51 @@ public class SwitchEndToEndTests
     }
 
     [Test]
+    public async Task Dial_RecordsSuccess_AndAbsorbsIdentifyClaims()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var listenerNode = BuildNode();
+        var dialerNode = BuildNode();
+
+        IListener listener = await listenerNode.Switch.ListenAsync(listenerNode.Peer, cts.Token);
+
+        IRemotePeer peer = dialerNode.Switch.GetRemotePeer(listenerNode.Peer.Identity);
+        peer.GetOrAddAddress(listener.Address);
+        IRemotePeerConnection connection = await dialerNode.Switch.DialAsync(peer, cts.Token);
+
+        // The successful dial is on the address's record.
+        Assert.That(peer.GetOrAddByValue(listener.Address).SuccessfulDials, Is.EqualTo(1));
+
+        // The listener's Identify claims were absorbed into its book:
+        // its advertised listen address, vouched for by the peer
+        // itself (the advertised form carries no /p2p part; the
+        // message's key field names the peer).
+        string listenForm = listener.Address.ToString();
+        listenForm = listenForm[..listenForm.IndexOf("/p2p/", StringComparison.Ordinal)];
+        // Identify completes just after the dial returns; its
+        // absorption into the book lands with it.
+        PeerAddressAccounting? accounting = null;
+        for (int i = 0; i < 100 && accounting is null; i++)
+        {
+            accounting = peer.Addresses
+                .Where(pair => pair.Key.ToString() == listenForm)
+                .Select(pair => pair.Value)
+                .FirstOrDefault();
+            if (accounting is null)
+            {
+                await Task.Delay(100, cts.Token);
+            }
+        }
+        Assert.That(accounting, Is.Not.Null, "the Identify claim never reached the book");
+        Assert.That(accounting.Sources, Is.EqualTo(AddressSource.SelfClaimed));
+        Assert.That(accounting.VouchCount, Is.EqualTo(1));
+
+        await connection.DisconnectAsync();
+        await listener.DisconnectAsync();
+    }
+
+    [Test]
     public async Task TwoDialsToTheSamePeer_ShareOneRemotePeer()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
