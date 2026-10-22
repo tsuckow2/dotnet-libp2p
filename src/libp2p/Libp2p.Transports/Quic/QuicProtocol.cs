@@ -334,8 +334,6 @@ public class QuicProtocol : IProtocol, ITransport
 
         peerConnection.LocalEndpoint = localEndPointMultiaddress;
 
-        peerConnection.LocalPeer.Address = isIP4 ? peerConnection.LocalPeer.Address.ReplaceOrAdd<IP4>(strLocalEndpointAddress) : peerConnection.LocalPeer.Address.ReplaceOrAdd<IP6>(strLocalEndpointAddress);
-
         IPEndPoint remoteIpEndpoint = connection.RemoteEndPoint!;
         isIP4 = remoteIpEndpoint.AddressFamily == AddressFamily.InterNetwork;
 

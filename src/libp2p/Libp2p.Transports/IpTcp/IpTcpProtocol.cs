@@ -166,8 +166,6 @@ public class IpTcpProtocol(ILoggerFactory? loggerFactory = null) : ITransport, I
         localMultiaddress = isIP4 ? localMultiaddress.Add<IP4>(localIpAddress) : localMultiaddress.Add<IP6>(localIpAddress);
         connection.LocalEndpoint = localMultiaddress.Add<TCP>(localEndpoint.Port);
 
-        connection.LocalPeer.Address = connection.LocalEndpoint!.Add<P2P>(connection.LocalPeer.Identity.PeerId.ToString());
-
         IChannel upChannel = channelFactory.SubDial(connection);
 
         Task receiveTask = Task.Run(async () =>
