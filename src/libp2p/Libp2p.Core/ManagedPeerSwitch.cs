@@ -363,8 +363,14 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     public async Task<IRemotePeerConnection> DialAsync(IRemotePeer peer, CancellationToken token = default)
     {
+        // Evidence orders the attempts: an address that connected
+        // recently goes first, then the least-failed, then the
+        // best-vouched. Outcomes are recorded by the dial itself,
+        // at the one choke point every dial passes through.
         KeyValuePair<Multiaddress, PeerAddressAccounting>[] addresses = peer.Addresses
-            .OrderBy(pair => pair.Value.FailedDials)
+            .OrderByDescending(pair => pair.Value.LastSuccessAt ?? DateTimeOffset.MinValue)
+            .ThenBy(pair => pair.Value.FailedDials)
+            .ThenByDescending(pair => pair.Value.VouchCount)
             .ToArray();
         if (addresses.Length == 0)
         {
@@ -372,7 +378,7 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
         }
 
         Exception? lastError = null;
-        foreach ((Multiaddress addr, PeerAddressAccounting accounting) in addresses)
+        foreach ((Multiaddress addr, PeerAddressAccounting _) in addresses)
         {
             try
             {
@@ -380,7 +386,6 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
             }
             catch (Exception e)
             {
-                accounting.RecordFailedDial();
                 lastError = e;
             }
         }
@@ -400,7 +405,7 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
 
     internal async Task<IRemotePeerConnection> DialAsync(ILocalPeer fromPeer, Multiaddress addr, IRemotePeer remotePeer, CancellationToken token = default, bool anonymousPeer = false)
     {
-        remotePeer.GetOrAddAddress(addr);
+        PeerAddressAccounting accounting = remotePeer.GetOrAddByValue(addr);
         (IProtocol root, IChannelFactory rootFactory) = BuildChain(addr);
 
         Channel signalingChannel = new();
@@ -457,6 +462,21 @@ public class ManagedPeerSwitch : IManagedPeerSwitch
                     connected.TrySetException(new PeerConnectionException($"The connection to {addr} closed before it was established."));
                 }
             });
-        return await connected.Task.WaitAsync(token);
+        try
+        {
+            IRemotePeerConnection established = await connected.Task.WaitAsync(token);
+            accounting.RecordSuccessfulDial();
+            return established;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // The caller stopped asking; the address did not fail.
+            throw;
+        }
+        catch
+        {
+            accounting.RecordFailedDial();
+            throw;
+        }
     }
 }
