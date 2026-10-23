@@ -298,6 +298,12 @@ public class DcutrEndToEndTests
         // The upgrade is an addition, not a replacement: the
         // relayed connection still carries traffic.
         await t.DialerRelayed.DialAsync<PingProtocol>(cts.Token);
+
+        // And the direct connection carries traffic too — the
+        // assertion whose absence let the shared-deadline
+        // cancellation ship: punched connections stayed listed
+        // and proven while their stream layer was dead.
+        await destinationDirect!.DialAsync<PingProtocol>(cts.Token);
         await CleanupAsync(t);
     }
 
@@ -317,6 +323,13 @@ public class DcutrEndToEndTests
             "The service's result should be the direct QUIC connection to the dialer.");
         Assert.That(direct!.ProvenPeerId!.ToString(),
             Is.EqualTo(t.Dialer.Peer.Identity.PeerId.ToString()));
+
+        // The upgrade must carry traffic, not just exist. A stack
+        // connection's stream layer lives under its dial token;
+        // the dialer once cancelled the shared deadline the moment
+        // a winner landed, leaving the winning connection listed
+        // and proven but unable to move a single stream.
+        await direct.DialAsync<PingProtocol>(cts.Token);
 
         await CleanupAsync(t);
     }
