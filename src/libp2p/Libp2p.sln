@@ -95,6 +95,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.Status.Tests", "..\ipf
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Libp2p.Protocols.Dcutr", "Libp2p.Protocols.Dcutr\Libp2p.Protocols.Dcutr.csproj", "{BCBEBBB1-9941-44AE-8301-85C38CBC5D59}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Libp2p.Protocols.Dcutr.Tests", "Libp2p.Protocols.Dcutr.Tests\Libp2p.Protocols.Dcutr.Tests.csproj", "{5616FE8F-5F59-4444-8ACA-F1F7EB2294F6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -261,6 +263,10 @@ Global
 		{BCBEBBB1-9941-44AE-8301-85C38CBC5D59}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BCBEBBB1-9941-44AE-8301-85C38CBC5D59}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BCBEBBB1-9941-44AE-8301-85C38CBC5D59}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5616FE8F-5F59-4444-8ACA-F1F7EB2294F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5616FE8F-5F59-4444-8ACA-F1F7EB2294F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5616FE8F-5F59-4444-8ACA-F1F7EB2294F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5616FE8F-5F59-4444-8ACA-F1F7EB2294F6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
