@@ -57,85 +57,77 @@ internal static class HolePunchDialer
     ///     postpones our dials (the initiator's half-RTT), never the
     ///     watch: the peer's dial can land at any moment.
     ///
-    ///     Each dial gets its own cancellation source, deliberately
-    ///     NOT linked to <paramref name="token"/>: a stack
-    ///     connection's stream layer lives under the token its dial
-    ///     was made with, so cancelling after establishment leaves
-    ///     the connection listed and proven but unable to carry a
-    ///     stream. (One shared deadline, cancelled the moment a
-    ///     winner landed, zombified every connection a punch
-    ///     produced — the upgrade "succeeded" and then could not
-    ///     move a single ping. Linking would be no better: callers
-    ///     pass exchange-scoped tokens — the DCUtR channel's own —
-    ///     which fire the moment the exchange ends.) The caller's
-    ///     token therefore only aborts the race while it runs, via
-    ///     a registration that dies with this method; a source whose
-    ///     dial established is then merely disarmed and left
-    ///     undisposed — the token is part of the connection's
-    ///     lifetime now. Losing dials are cancelled while still in
-    ///     flight (a cancelled dial records no failure against its
-    ///     address). A loser that established anyway is KEPT, like
-    ///     the winner: a simultaneous open legitimately produces
-    ///     several connections to one peer, and disconnecting a
-    ///     surplus dial would leave its accepted twin on the other
-    ///     node listed as live but remotely dead.
+    ///     No dial made here is EVER cancelled — each gets a
+    ///     private source that is never fired, never disposed, and
+    ///     not linked to <paramref name="token"/>. The switch
+    ///     finalizes a connection under its dial token (identity
+    ///     protocols, stream pumps), so cancelling a dial token at
+    ///     any point — before, during, or after establishment —
+    ///     can leave the connection listed and proven but unable
+    ///     to carry a stream. (The first version shared one
+    ///     deadline across all dials and cancelled it when a
+    ///     winner landed: every punched connection was a zombie,
+    ///     and the upgrade "succeeded" without moving a single
+    ///     ping.) Callers pass exchange-scoped tokens besides,
+    ///     which fire when the exchange ends. The price is that a
+    ///     dial to a dead address runs to the transport's own
+    ///     timeout instead of the window's; that is the correct
+    ///     trade — the window bounds how long this method WAITS,
+    ///     not how long dials live, and a dial that lands late is
+    ///     just another connection to the destination. Surplus
+    ///     connections are kept, never disconnected: disconnecting
+    ///     one would leave its accepted twin on the other node
+    ///     listed as live but remotely dead.
     /// </summary>
     public static async Task<IRemotePeerConnection?> DialSimultaneouslyAsync(
         IManagedPeerSwitch @switch, IRemotePeer peer, PeerId destination,
         IReadOnlyList<Multiaddress> targets, IRemotePeerConnection relayed,
         TimeSpan startDelay, TimeSpan window, CancellationToken token)
     {
-        var attempts = new List<DialAttempt>();
-        foreach (Multiaddress target in targets)
-        {
-            var attempt = new DialAttempt(new CancellationTokenSource());
-            attempt.Source.CancelAfter(window);
-            attempts.Add(attempt);
-            attempt.Task = DialOne(attempt, target);
-        }
-
-        using var abortRegistration = token.Register(() =>
-        {
-            foreach (DialAttempt attempt in attempts)
-            {
-                attempt.Source.Cancel();
-            }
-        });
+        var dials = targets.Select(DialOne).ToList();
 
         using var watchSource = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<IRemotePeerConnection?> watch = Watch(watchSource.Token);
 
-        var pending = attempts.Select(a => a.Task).Append(watch).ToList();
+        Task windowElapsed = Task.Delay(window, token);
+        var pending = dials.Append(watch).Append(windowElapsed).ToList();
         IRemotePeerConnection? winner = null;
         while (pending.Count > 0 && winner is null)
         {
-            Task<IRemotePeerConnection?> finished =
-                await Task.WhenAny(pending).ConfigureAwait(false);
+            Task finished = await Task.WhenAny(pending).ConfigureAwait(false);
             pending.Remove(finished);
+            if (ReferenceEquals(finished, windowElapsed))
+            {
+                break;
+            }
+
             // DialOne and Watch never fault: every outcome is a
             // connection or null.
-            winner = await finished.ConfigureAwait(false);
+            winner = await ((Task<IRemotePeerConnection?>)finished).ConfigureAwait(false);
         }
 
         watchSource.Cancel();
         await ((Task)watch).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 
-        IRemotePeerConnection? result =
-            winner ?? FindDirect(@switch, destination, relayed);
-        RetireAttempts(attempts);
-        return result;
+        return winner ?? FindDirect(@switch, destination, relayed);
 
-        async Task<IRemotePeerConnection?> DialOne(DialAttempt attempt, Multiaddress target)
+        async Task<IRemotePeerConnection?> DialOne(Multiaddress target)
         {
+            // The source exists only to give this dial a token
+            // nothing can fire: it is deliberately leaked, because
+            // the token becomes part of the connection's lifetime
+            // (see the method's remarks) and disposing the source
+            // of a live connection's token is its own hazard.
+            var source = new CancellationTokenSource();
             try
             {
                 if (startDelay > TimeSpan.Zero)
                 {
-                    await Task.Delay(startDelay, attempt.Source.Token).ConfigureAwait(false);
+                    await Task.Delay(startDelay).ConfigureAwait(false);
                 }
 
                 Multiaddress dialAddress = target.Add<P2P>(destination.ToString());
-                return await @switch.DialAsync(peer, dialAddress, attempt.Source.Token)
+                return await @switch.DialAsync(peer, dialAddress, source.Token)
                     .ConfigureAwait(false);
             }
             catch (Exception)
@@ -150,18 +142,16 @@ internal static class HolePunchDialer
 
         async Task<IRemotePeerConnection?> Watch(CancellationToken watchToken)
         {
-            using var windowSource = CancellationTokenSource.CreateLinkedTokenSource(watchToken);
-            windowSource.CancelAfter(window);
             try
             {
-                while (!windowSource.IsCancellationRequested)
+                while (!watchToken.IsCancellationRequested)
                 {
                     if (FindDirect(@switch, destination, relayed) is { } connection)
                     {
                         return connection;
                     }
 
-                    await Task.Delay(WatchInterval, windowSource.Token).ConfigureAwait(false);
+                    await Task.Delay(WatchInterval, watchToken).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -170,51 +160,6 @@ internal static class HolePunchDialer
 
             return FindDirect(@switch, destination, relayed);
         }
-    }
-
-    /// <summary>
-    ///     Settles every dial of a finished simultaneous attempt.
-    ///     A dial that established — winner or surplus — has its
-    ///     source disarmed (never cancelled, never disposed — see
-    ///     <see cref="DialSimultaneouslyAsync"/>) and its
-    ///     connection kept. A dial still in flight is cancelled;
-    ///     if it establishes in that same instant anyway, the
-    ///     continuation disarms it whenever it lands.
-    /// </summary>
-    private static void RetireAttempts(List<DialAttempt> attempts)
-    {
-        foreach (DialAttempt attempt in attempts)
-        {
-            if (attempt.Task is { IsCompleted: true })
-            {
-                if (attempt.Task.Result is not null)
-                {
-                    attempt.Source.CancelAfter(Timeout.InfiniteTimeSpan);
-                }
-
-                continue;
-            }
-
-            attempt.Source.Cancel();
-            _ = attempt.Task.ContinueWith(
-                finished =>
-                {
-                    if (finished.Status == TaskStatus.RanToCompletion
-                        && finished.Result is not null)
-                    {
-                        attempt.Source.CancelAfter(Timeout.InfiniteTimeSpan);
-                    }
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-    }
-
-    private sealed class DialAttempt(CancellationTokenSource source)
-    {
-        public CancellationTokenSource Source { get; } = source;
-        public Task<IRemotePeerConnection?> Task { get; set; } = null!;
     }
 
     private static bool SamePeer(PeerId? candidate, PeerId destination)
