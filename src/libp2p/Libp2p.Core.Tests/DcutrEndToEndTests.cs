@@ -227,6 +227,36 @@ public class DcutrEndToEndTests
         return null;
     }
 
+    private static string DumpState(Topology t)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("DEST advertised: " + string.Join(", ", t.Destination.Peer.AdvertisedAddresses()));
+        sb.AppendLine("DIALER advertised: " + string.Join(", ", t.Dialer.Peer.AdvertisedAddresses()));
+        foreach (IRemotePeerConnection c in t.Destination.Switch.LiveConnections.Keys)
+        {
+            sb.AppendLine($"DEST live: ep={c.RemoteEndpoint} proven={c.ProvenPeerId} parent={(c.ParentConnection is null ? "null" : "set")}");
+        }
+        foreach (IRemotePeerConnection c in t.Dialer.Switch.LiveConnections.Keys)
+        {
+            sb.AppendLine($"DIALER live: ep={c.RemoteEndpoint} proven={c.ProvenPeerId} parent={(c.ParentConnection is null ? "null" : "set")}");
+        }
+        if (t.Destination.Switch.AddressBook.TryGet(t.Dialer.Peer.Identity.PeerId, out IPeer? bookForDialer))
+        {
+            foreach ((Multiformats.Address.Multiaddress a, PeerAddressAccounting acc) in bookForDialer!.Addresses)
+            {
+                sb.AppendLine($"DEST book[dialer]: {a} ok={acc.SuccessfulDials} fail={acc.FailedDials} src={acc.Sources}");
+            }
+        }
+        if (t.Dialer.Switch.AddressBook.TryGet(t.Destination.Peer.Identity.PeerId, out IPeer? bookForDest))
+        {
+            foreach ((Multiformats.Address.Multiaddress a, PeerAddressAccounting acc) in bookForDest!.Addresses)
+            {
+                sb.AppendLine($"DIALER book[dest]: {a} ok={acc.SuccessfulDials} fail={acc.FailedDials} src={acc.Sources}");
+            }
+        }
+        return sb.ToString();
+    }
+
     private static bool SamePeer(IRemotePeerConnection connection, Identity peer)
     {
         // Identity objects are per-node reconstructions of a key;
@@ -273,7 +303,7 @@ public class DcutrEndToEndTests
                 .FirstOrDefault(c => IsDirectQuicTo(c, t.Dialer.Peer.Identity)),
             TimeSpan.FromSeconds(15), cts.Token);
         Assert.That(destinationDirect, Is.Not.Null,
-            "The destination should hold a direct QUIC connection to the dialer.");
+            "The destination should hold a direct QUIC connection to the dialer.\n" + DumpState(t));
         Assert.That(destinationDirect!.ProvenPeerId, Is.Not.Null);
         Assert.That(destinationDirect.ProvenPeerId!.ToString(),
             Is.EqualTo(t.Dialer.Peer.Identity.PeerId.ToString()));
@@ -302,9 +332,10 @@ public class DcutrEndToEndTests
         IRemotePeerConnection? direct = await service.TryUpgradeAsync(t.DestinationRelayed, cts.Token);
 
         Assert.That(direct, Is.Not.Null,
-            "The service should produce a direct connection.");
+            "The service should produce a direct connection.\n" + DumpState(t));
         Assert.That(IsDirectQuicTo(direct!, t.Dialer.Peer.Identity), Is.True,
-            "The service's result should be the direct QUIC connection to the dialer.");
+            $"The service's result should be the direct QUIC connection to the dialer; " +
+            $"got ep={direct!.RemoteEndpoint} transport={direct.TransportConnection.Address}.\n" + DumpState(t));
         Assert.That(direct!.ProvenPeerId!.ToString(),
             Is.EqualTo(t.Dialer.Peer.Identity.PeerId.ToString()));
 
