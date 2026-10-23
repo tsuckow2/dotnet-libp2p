@@ -240,20 +240,18 @@ public class DcutrEndToEndTests
         {
             sb.AppendLine($"DIALER live: ep={c.RemoteEndpoint} proven={c.ProvenPeerId} parent={(c.ParentConnection is null ? "null" : "set")}");
         }
-        IPeerAddressBook? destBook = t.Destination.Services.GetService<IPeerAddressBook>();
-        if (destBook is not null && destBook.TryGet(t.Dialer.Peer.Identity.PeerId, out IPeer? bookForDialer))
+        foreach ((Identity _, IRemotePeer peer) in t.Destination.Switch.RemotePeers)
         {
-            foreach ((Multiformats.Address.Multiaddress a, PeerAddressAccounting acc) in bookForDialer!.Addresses)
+            foreach ((Multiaddress a, PeerAddressAccounting acc) in peer.Addresses)
             {
-                sb.AppendLine($"DEST book[dialer]: {a} ok={acc.SuccessfulDials} fail={acc.FailedDials} src={acc.Sources}");
+                sb.AppendLine($"DEST book[{peer.Identity.PeerId}]: {a} ok={acc.SuccessfulDials} fail={acc.FailedDials} src={acc.Sources}");
             }
         }
-        IPeerAddressBook? dialerBook = t.Dialer.Services.GetService<IPeerAddressBook>();
-        if (dialerBook is not null && dialerBook.TryGet(t.Destination.Peer.Identity.PeerId, out IPeer? bookForDest))
+        foreach ((Identity _, IRemotePeer peer) in t.Dialer.Switch.RemotePeers)
         {
-            foreach ((Multiformats.Address.Multiaddress a, PeerAddressAccounting acc) in bookForDest!.Addresses)
+            foreach ((Multiaddress a, PeerAddressAccounting acc) in peer.Addresses)
             {
-                sb.AppendLine($"DIALER book[dest]: {a} ok={acc.SuccessfulDials} fail={acc.FailedDials} src={acc.Sources}");
+                sb.AppendLine($"DIALER book[{peer.Identity.PeerId}]: {a} ok={acc.SuccessfulDials} fail={acc.FailedDials} src={acc.Sources}");
             }
         }
         return sb.ToString();
