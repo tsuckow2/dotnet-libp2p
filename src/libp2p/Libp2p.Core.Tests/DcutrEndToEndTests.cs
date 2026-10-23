@@ -240,19 +240,18 @@ public class DcutrEndToEndTests
     {
         // A QUIC connection's endpoint in this stack is the bare
         // UDP socket form — /quic-v1 lives in the dialed address,
-        // not in the established connection's endpoint. The direct
-        // connection is the one whose endpoint is the socket form
-        // of the peer's advertised QUIC address.
-        string? quicSocketForm = peer.AdvertisedAddresses()
-            .Select(a => a.ToString())
-            .FirstOrDefault(a => a.Contains("/quic-v1"));
-        if (quicSocketForm is null)
-        {
-            return false;
-        }
-        int quicAt = quicSocketForm.IndexOf("/quic-v1", StringComparison.Ordinal);
-        string expected = quicSocketForm[..quicAt];
-        return connection.RemoteEndpoint?.ToString() == expected
+        // not in the established connection's endpoint — and a
+        // simultaneous dial legitimately produces two direct
+        // connections (our outbound one, endpoint = the peer's
+        // listener; the peer's outbound one accepted here,
+        // endpoint = its source socket). Either is the upgrade:
+        // what defines it is a non-circuit UDP endpoint — QUIC is
+        // the only UDP transport in this stack — to the proven
+        // peer.
+        string? endpoint = connection.RemoteEndpoint?.ToString();
+        return endpoint is not null
+            && endpoint.Contains("/udp/")
+            && !endpoint.Contains("/p2p-circuit")
             && SamePeer(connection, peer.Identity);
     }
 
