@@ -69,13 +69,16 @@ internal static class HolePunchDialer
     ///     pass exchange-scoped tokens — the DCUtR channel's own —
     ///     which fire the moment the exchange ends.) The caller's
     ///     token therefore only aborts the race while it runs, via
-    ///     a registration that dies with this method; the winner's
-    ///     source is then merely disarmed and left undisposed —
-    ///     the token is part of the connection's lifetime now.
-    ///     Losing dials are cancelled while still in flight (a
-    ///     cancelled dial records no failure against its address);
-    ///     a loser that established anyway is disconnected
-    ///     outright, never abandoned.
+    ///     a registration that dies with this method; a source whose
+    ///     dial established is then merely disarmed and left
+    ///     undisposed — the token is part of the connection's
+    ///     lifetime now. Losing dials are cancelled while still in
+    ///     flight (a cancelled dial records no failure against its
+    ///     address). A loser that established anyway is KEPT, like
+    ///     the winner: a simultaneous open legitimately produces
+    ///     several connections to one peer, and disconnecting a
+    ///     surplus dial would leave its accepted twin on the other
+    ///     node listed as live but remotely dead.
     /// </summary>
     public static async Task<IRemotePeerConnection?> DialSimultaneouslyAsync(
         IManagedPeerSwitch @switch, IRemotePeer peer, PeerId destination,
@@ -119,7 +122,7 @@ internal static class HolePunchDialer
 
         IRemotePeerConnection? result =
             winner ?? FindDirect(@switch, destination, relayed);
-        await RetireAttempts(attempts, result).ConfigureAwait(false);
+        RetireAttempts(attempts);
         return result;
 
         async Task<IRemotePeerConnection?> DialOne(DialAttempt attempt, Multiaddress target)
@@ -170,74 +173,48 @@ internal static class HolePunchDialer
     }
 
     /// <summary>
-    ///     Settles every dial of a finished simultaneous attempt:
-    ///     the winner's source is disarmed (never cancelled, never
-    ///     disposed — see <see cref="DialSimultaneouslyAsync"/>);
-    ///     every other dial is cancelled, and any connection it
-    ///     nevertheless established — then or a moment later — is
-    ///     disconnected rather than left behind.
+    ///     Settles every dial of a finished simultaneous attempt.
+    ///     A dial that established — winner or surplus — has its
+    ///     source disarmed (never cancelled, never disposed — see
+    ///     <see cref="DialSimultaneouslyAsync"/>) and its
+    ///     connection kept. A dial still in flight is cancelled;
+    ///     if it establishes in that same instant anyway, the
+    ///     continuation disarms it whenever it lands.
     /// </summary>
-    private static async Task RetireAttempts(
-        List<DialAttempt> attempts, IRemotePeerConnection? winner)
+    private static void RetireAttempts(List<DialAttempt> attempts)
     {
         foreach (DialAttempt attempt in attempts)
         {
-            if (attempt.Task is { IsCompleted: true }
-                && attempt.Task.Result is { } established)
+            if (attempt.Task is { IsCompleted: true })
             {
-                if (ReferenceEquals(established, winner))
+                if (attempt.Task.Result is not null)
                 {
                     attempt.Source.CancelAfter(Timeout.InfiniteTimeSpan);
-                }
-                else
-                {
-                    attempt.Source.Cancel();
-                    await SafeDisconnect(established).ConfigureAwait(false);
                 }
 
                 continue;
             }
 
             attempt.Source.Cancel();
-            if (attempt.Task is { } inFlight)
-            {
-                // A dial cancelled in the same instant it
-                // establishes can still deliver a connection;
-                // retire it whenever it lands.
-                _ = inFlight.ContinueWith(
-                    async finished =>
+            _ = attempt.Task.ContinueWith(
+                finished =>
+                {
+                    if (finished.Status == TaskStatus.RanToCompletion
+                        && finished.Result is not null)
                     {
-                        if (finished.Status == TaskStatus.RanToCompletion
-                            && finished.Result is { } late
-                            && !ReferenceEquals(late, winner))
-                        {
-                            await SafeDisconnect(late).ConfigureAwait(false);
-                        }
-                    },
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default);
-            }
-        }
-    }
-
-    private static async Task SafeDisconnect(IRemotePeerConnection connection)
-    {
-        try
-        {
-            await connection.DisconnectAsync().ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // Teardown of a surplus connection must never fault
-            // the upgrade that replaced it.
+                        attempt.Source.CancelAfter(Timeout.InfiniteTimeSpan);
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 
     private sealed class DialAttempt(CancellationTokenSource source)
     {
         public CancellationTokenSource Source { get; } = source;
-        public Task<IRemotePeerConnection?>? Task { get; set; }
+        public Task<IRemotePeerConnection?> Task { get; set; } = null!;
     }
 
     private static bool SamePeer(PeerId? candidate, PeerId destination)
