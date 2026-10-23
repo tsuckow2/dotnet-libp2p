@@ -194,7 +194,7 @@ public class DcutrEndToEndTests
         IRemotePeerConnection destinationRelayed = await WaitForAsync(
             () => destination.Switch.LiveConnections.Keys.FirstOrDefault(c =>
                 c.ParentConnection is not null
-                && c.RemotePeer.Identity == dialer.Peer.Identity),
+                && SamePeer(c, dialer.Peer.Identity)),
             TimeSpan.FromSeconds(15), token);
         Assert.That(destinationRelayed, Is.Not.Null,
             "The destination should hold the relayed connection from the dialer.");
@@ -227,13 +227,22 @@ public class DcutrEndToEndTests
         return null;
     }
 
+    private static bool SamePeer(IRemotePeerConnection connection, Identity peer)
+    {
+        // Identity objects are per-node reconstructions of a key;
+        // equality is by peer id, never by reference.
+        string peerId = peer.PeerId.ToString();
+        return connection.ProvenPeerId?.ToString() == peerId
+            || connection.RemotePeer.Identity.PeerId.ToString() == peerId;
+    }
+
     private static bool IsDirectQuicTo(IRemotePeerConnection connection, Identity peer)
     {
         string? endpoint = connection.RemoteEndpoint?.ToString();
         return endpoint is not null
             && endpoint.Contains("/quic-v1")
             && !endpoint.Contains("/p2p-circuit")
-            && connection.RemotePeer.Identity == peer;
+            && SamePeer(connection, peer);
     }
 
     private static void RequireQuic()
