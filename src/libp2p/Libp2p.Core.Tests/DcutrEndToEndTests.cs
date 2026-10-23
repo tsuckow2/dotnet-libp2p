@@ -266,13 +266,24 @@ public class DcutrEndToEndTests
             || connection.RemotePeer.Identity.PeerId.ToString() == peerId;
     }
 
-    private static bool IsDirectQuicTo(IRemotePeerConnection connection, Identity peer)
+    private static bool IsDirectQuicTo(IRemotePeerConnection connection, LocalPeer peer)
     {
-        string? endpoint = connection.RemoteEndpoint?.ToString();
-        return endpoint is not null
-            && endpoint.Contains("/quic-v1")
-            && !endpoint.Contains("/p2p-circuit")
-            && SamePeer(connection, peer);
+        // A QUIC connection's endpoint in this stack is the bare
+        // UDP socket form — /quic-v1 lives in the dialed address,
+        // not in the established connection's endpoint. The direct
+        // connection is the one whose endpoint is the socket form
+        // of the peer's advertised QUIC address.
+        string? quicSocketForm = peer.AdvertisedAddresses()
+            .Select(a => a.ToString())
+            .FirstOrDefault(a => a.Contains("/quic-v1"));
+        if (quicSocketForm is null)
+        {
+            return false;
+        }
+        int quicAt = quicSocketForm.IndexOf("/quic-v1", StringComparison.Ordinal);
+        string expected = quicSocketForm[..quicAt];
+        return connection.RemoteEndpoint?.ToString() == expected
+            && SamePeer(connection, peer.Identity);
     }
 
     private static void RequireQuic()
@@ -300,7 +311,7 @@ public class DcutrEndToEndTests
 
         IRemotePeerConnection? destinationDirect = await WaitForAsync(
             () => t.Destination.Switch.LiveConnections.Keys
-                .FirstOrDefault(c => IsDirectQuicTo(c, t.Dialer.Peer.Identity)),
+                .FirstOrDefault(c => IsDirectQuicTo(c, t.Dialer.Peer)),
             TimeSpan.FromSeconds(15), cts.Token);
         Assert.That(destinationDirect, Is.Not.Null,
             "The destination should hold a direct QUIC connection to the dialer.\n" + DumpState(t));
@@ -310,7 +321,7 @@ public class DcutrEndToEndTests
 
         IRemotePeerConnection? dialerDirect = await WaitForAsync(
             () => t.Dialer.Switch.LiveConnections.Keys
-                .FirstOrDefault(c => IsDirectQuicTo(c, t.Destination.Peer.Identity)),
+                .FirstOrDefault(c => IsDirectQuicTo(c, t.Destination.Peer)),
             TimeSpan.FromSeconds(15), cts.Token);
         Assert.That(dialerDirect, Is.Not.Null,
             "The dialer should hold the other end of the direct QUIC connection.");
@@ -333,7 +344,7 @@ public class DcutrEndToEndTests
 
         Assert.That(direct, Is.Not.Null,
             "The service should produce a direct connection.\n" + DumpState(t));
-        Assert.That(IsDirectQuicTo(direct!, t.Dialer.Peer.Identity), Is.True,
+        Assert.That(IsDirectQuicTo(direct!, t.Dialer.Peer), Is.True,
             $"The service's result should be the direct QUIC connection to the dialer; " +
             $"got ep={direct!.RemoteEndpoint} transport={direct.TransportConnection.Address}.\n" + DumpState(t));
         Assert.That(direct!.ProvenPeerId!.ToString(),
