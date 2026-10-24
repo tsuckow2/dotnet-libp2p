@@ -107,6 +107,21 @@ public class AdvertisedAddressesTests
             Is.EqualTo(new[] { "/ip4/203.0.113.7/tcp/4001" }),
             "the candidate carries the observed IP at the listener's own port, not the reporting connection's");
     }
+
+    [Test]
+    public void ObservedCandidate_KeepsTheListenShapesSuffix()
+    {
+        LocalPeer peer = PeerWith("/ip4/0.0.0.0/udp/4001/quic-v1");
+        Multiaddress observed = Multiaddress.Decode("/ip4/203.0.113.7/tcp/55555");
+
+        peer.RecordObservedAddress(observed, "peer-a");
+        peer.RecordObservedAddress(observed, "peer-b");
+        peer.RecordObservedAddress(observed, "peer-c");
+
+        Assert.That(peer.AdvertisedAddresses().Select(a => a.ToString()),
+            Is.EqualTo(new[] { "/ip4/203.0.113.7/udp/4001/quic-v1" }),
+            "a candidate truncated to the bare port protocol names no transport and can never be dialed");
+    }
 }
 
 public class WildcardExpansionTests

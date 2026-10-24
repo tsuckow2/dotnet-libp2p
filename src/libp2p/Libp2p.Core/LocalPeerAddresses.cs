@@ -180,7 +180,12 @@ public static class LocalPeerAddresses
             return null;
         }
 
-        return $"/{parts[0]}/{observedIp}/{parts[2]}/{parts[3]}";
+        // Keep the shape's suffix (/quic-v1, ...): a candidate
+        // truncated to the bare port protocol names no transport
+        // and can never be dialed — the earned public form of a
+        // QUIC listener must stay a QUIC address.
+        parts[1] = observedIp;
+        return "/" + string.Join("/", parts);
     }
 
     private static bool HasUnspecifiedAddress(Multiaddress address)
