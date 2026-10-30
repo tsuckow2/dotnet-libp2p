@@ -38,7 +38,7 @@ namespace Nethermind.Libp2p.Protocols;
 /// one directory per transport instance, deleted on dispose.
 /// IPv4 only, like the Quiche.NET socket underneath.
 /// </summary>
-public class QuicheTransport : ITransport, IDisposable
+public partial class QuicheTransport : ITransport, IProtocol, IDisposable
 {
     private readonly ILogger<QuicheTransport>? _logger;
     private readonly ECDsa _sessionKey;
@@ -137,6 +137,11 @@ public class QuicheTransport : ITransport, IDisposable
             ThrowIfDisposed();
             if (_listenSocket is not null)
             {
+                if (!_listenSocket.LocalEndPoint.Equals(listenEndPoint))
+                {
+                    throw new InvalidOperationException(
+                        $"Transport is already listening on {_listenSocket.LocalEndPoint}, cannot also listen on {listenEndPoint}.");
+                }
                 return _listenSocket;
             }
             string certDir = GetOrCreateCertFiles();

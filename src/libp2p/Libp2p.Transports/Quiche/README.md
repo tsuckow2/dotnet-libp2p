@@ -6,8 +6,12 @@ A libp2p transport over Cloudflare quiche, via the [Quiche.NET](https://github.c
 
 - Phase 1 (standalone `ITransport` path): dial/listen/echo raw pipe, ephemeral identity, any certificate accepted — the same contract as `QuicProtocol`'s standalone methods and `IpTcpProtocol`'s.
 - Phase 2 (shared-port dial through `ITransport`): listen on port P, dial from port P through the transport API.
-- Phase 3 (identity): dial-side certificate proof publishing `ProvenPeerId`, punch nonce for inbound.
+- Phase 3 (identity): dial-side certificate proof publishing `ProvenPeerId`; inbound proof is a signed `QuicheProofFrame` on a dedicated first stream (see below), NOT a relay-exchanged nonce.
 - Phase 4 (stack path): `IProtocol` in the default stack, quiche as the default `quic-v1`, live Forge↔dell gate.
+
+## Inbound identity: why a signed frame, not a punch nonce
+
+The plan's recommendation was a one-time nonce exchanged via relay coordination. Implementing that needs a relay exchange with no clean hook: the DCUtR wire messages are spec-fixed (a new field is a spec deviation), and a separate nonce protocol over the relayed connection needs a shared registry plus DI plumbing from the DCUtR service (transport-agnostic) into this transport. The signed frame achieves the same goal with no new protocol and no DCUtR change: the dialer signs (listener PeerId + dialer PeerId + timestamp + dialer public key) with its identity key and sends it as the first stream's first frame. It is sound because the frame only ever travels inside the TLS-encrypted direct connection to a listener the dialer just authenticated via dial-side certificate proof — an attacker cannot observe it, cannot forge the dialer's signature, and cannot replay it to another listener (bound to the listener's PeerId) or later (120 s window). A dialer that sends no proof frame (any other QUIC implementation) is handed up unproven: the listener peeks at the first stream's first bytes and replays them when they are not the proof magic, so this costs no interop. A confirmed proof frame that fails validation closes the connection; an unproven connection is named by Identify as before. The nonce registry remains a contained future swap: the accept path's first-frame validation is the same shape either way.
 
 ## Layout and the Quiche.NET dependency
 

@@ -34,4 +34,22 @@
     <ProjectReference Include="..\Libp2p.Protocols.Ping\Libp2p.Protocols.Ping.csproj" />
   </ItemGroup>
 
+  <!-- The default stack's quic-v1 is the quiche transport, so the
+       end-to-end tests that run the default stack need the native
+       libquiche staged next to the test assembly, exactly as the
+       Quiche.Tests project stages it. Override with
+       /p:QuicheNetDir=. -->
+  <PropertyGroup>
+    <QuicheNetDir Condition="'$(QuicheNetDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\quiche-dotnet\</QuicheNetDir>
+  </PropertyGroup>
+
+  <Target Name="StageQuicheNative" AfterTargets="Build">
+    <ItemGroup>
+      <QuicheNativeFiles Include="$(QuicheNetDir)native\out\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(QuicheNativeFiles)"
+          DestinationFiles="@(QuicheNativeFiles->'$(OutputPath)runtimes\%(RecursiveDir)native\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
