@@ -159,19 +159,23 @@ public class QuicheTransportTests
             _ = EchoLoop(channel, testCts.Token);
         }, testCts.Token);
 
-        // A dials B: B must see source port A.
+        // A dials B: B must see source port A. The write comes
+        // first: onConnection fires per accepted stream (the msquic
+        // contract this mirrors), and a stream is invisible to the
+        // peer until the opener sends on it — waiting for the
+        // callback before writing deadlocks.
+        byte[] hello = Encoding.UTF8.GetBytes("hello");
         IRemoteComm commAB = await transportA.DialAsync(LoopbackQuic(portB));
+        await commAB.Channel.WriteAsync(new ReadOnlySequence<byte>(hello), testCts.Token);
         Multiaddress remoteAtB = await seenByB.Task.WaitAsync(testCts.Token);
         Assert.That(remoteAtB.Get<UDP>().Port, Is.EqualTo(portA));
-        byte[] hello = Encoding.UTF8.GetBytes("hello");
-        await commAB.Channel.WriteAsync(new ReadOnlySequence<byte>(hello), testCts.Token);
         Assert.That(await ReadExactAsync(commAB.Channel, hello.Length, testCts.Token), Is.EqualTo(hello));
 
         // B dials A: A must see source port B.
         IRemoteComm commBA = await transportB.DialAsync(LoopbackQuic(portA));
+        await commBA.Channel.WriteAsync(new ReadOnlySequence<byte>(hello), testCts.Token);
         Multiaddress remoteAtA = await seenByA.Task.WaitAsync(testCts.Token);
         Assert.That(remoteAtA.Get<UDP>().Port, Is.EqualTo(portB));
-        await commBA.Channel.WriteAsync(new ReadOnlySequence<byte>(hello), testCts.Token);
         Assert.That(await ReadExactAsync(commBA.Channel, hello.Length, testCts.Token), Is.EqualTo(hello));
 
         await commAB.Connection.DisconnectAsync();
