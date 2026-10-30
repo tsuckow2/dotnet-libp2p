@@ -41,11 +41,12 @@ namespace Nethermind.Libp2p.Protocols;
 public partial class QuicheTransport : ITransport, IProtocol, IDisposable
 {
     private readonly ILogger<QuicheTransport>? _logger;
-    private readonly ECDsa _sessionKey;
+    private readonly RSA _sessionKey;
     private readonly object _gate = new();
     private QuicSocket? _listenSocket;
     private QuicSocket? _dialSocket;
     private string? _certDir;
+    private Identity? _certIdentity;
     private bool _disposed;
 
     /// <summary>libp2p's QUIC ALPN, as in the msquic transport.</summary>
@@ -57,7 +58,12 @@ public partial class QuicheTransport : ITransport, IProtocol, IDisposable
     public QuicheTransport(ILoggerFactory? loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<QuicheTransport>();
-        _sessionKey = ECDsa.Create();
+        // RSA, not ECDsa: quiche's server aborts the handshake
+        // (CRYPTO_ERROR 0x128, TLS handshake_failure) for a
+        // .NET-generated ECDSA server certificate — proven by the
+        // 2026-10-29 Forge bisect (ECDSA variants all failed,
+        // RSA passed). msquic accepts ECDsa; quiche does not.
+        _sessionKey = RSA.Create(2048);
     }
 
     public string AddressProtocol => "quic-v1";
@@ -92,7 +98,9 @@ public partial class QuicheTransport : ITransport, IProtocol, IDisposable
         MultiaddressProtocol ipProtocol = localAddress.Has<IP4>() ? localAddress.Get<IP4>() : localAddress.Get<IP6>();
         var listenEndPoint = new IPEndPoint(IPAddress.Parse(ipProtocol.ToString()), localAddress.Get<UDP>().Port);
 
-        QuicSocket socket = GetListenSocket(listenEndPoint);
+        // The standalone path is a raw pipe with no peer identity:
+        // its server certificate embeds an ephemeral identity.
+        QuicSocket socket = GetListenSocket(listenEndPoint, new Identity());
         try
         {
             while (!token.IsCancellationRequested)
@@ -130,7 +138,7 @@ public partial class QuicheTransport : ITransport, IProtocol, IDisposable
         }
     }
 
-    private QuicSocket GetListenSocket(IPEndPoint listenEndPoint)
+    private QuicSocket GetListenSocket(IPEndPoint listenEndPoint, Identity certIdentity)
     {
         lock (_gate)
         {
@@ -144,7 +152,7 @@ public partial class QuicheTransport : ITransport, IProtocol, IDisposable
                 }
                 return _listenSocket;
             }
-            string certDir = GetOrCreateCertFiles();
+            string certDir = GetOrCreateCertFiles(certIdentity);
             _listenSocket = new QuicSocket(listenEndPoint, new QuicServerOptions
             {
                 Alpn = Alpn,
@@ -178,13 +186,22 @@ public partial class QuicheTransport : ITransport, IProtocol, IDisposable
         }
     }
 
-    private string GetOrCreateCertFiles()
+    private string GetOrCreateCertFiles(Identity certIdentity)
     {
         if (_certDir is not null)
         {
+            // One certificate per transport instance: the stack
+            // path's dial-side proof validates the server cert
+            // against the expected peer, so a second listen naming
+            // a different identity would serve the wrong proof.
+            if (!_certIdentity!.PeerId.Bytes.AsSpan().SequenceEqual(certIdentity.PeerId.Bytes))
+            {
+                throw new InvalidOperationException(
+                    "Transport already has a server certificate for a different identity.");
+            }
             return _certDir;
         }
-        X509Certificate cert = CertificateHelper.CertificateFromIdentity(_sessionKey, new Identity());
+        X509Certificate cert = CertificateHelper.CertificateFromIdentity(_sessionKey, certIdentity);
         string certPem = new X509Certificate2(cert.GetRawCertData()).ExportCertificatePem();
         string keyPem = _sessionKey.ExportPkcs8PrivateKeyPem();
         string dir = Path.Combine(Path.GetTempPath(), "quiche-transport-" + Guid.NewGuid().ToString("N"));
@@ -192,6 +209,7 @@ public partial class QuicheTransport : ITransport, IProtocol, IDisposable
         File.WriteAllText(Path.Combine(dir, "cert.pem"), certPem);
         File.WriteAllText(Path.Combine(dir, "key.pem"), keyPem);
         _certDir = dir;
+        _certIdentity = certIdentity;
         return dir;
     }
 

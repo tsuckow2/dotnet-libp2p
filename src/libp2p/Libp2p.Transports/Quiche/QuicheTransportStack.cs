@@ -52,7 +52,11 @@ public partial class QuicheTransport
         int udpPort = int.Parse(addr.Get<UDP>().ToString());
 
         var localEndpoint = new IPEndPoint(ipAddress, udpPort);
-        QuicSocket socket = GetListenSocket(localEndpoint);
+        // The stack path's server certificate must embed the local
+        // peer's identity: the dial side validates it against the
+        // expected peer, and an ephemeral identity would fail that
+        // check (and misname anonymous dials).
+        QuicSocket socket = GetListenSocket(localEndpoint, peerConnection.LocalPeer.Identity);
 
         var localEndPoint = new Multiaddress();
         string strLocalEndpoint = socket.LocalEndPoint.Address.ToString();
