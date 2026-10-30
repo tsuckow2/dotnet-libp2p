@@ -27,6 +27,36 @@ public class QuicheTransportTests
         return ((IPEndPoint)probe.LocalEndPoint!).Port;
     }
 
+    private static (int First, int Second) TwoFreeUdpPorts()
+    {
+        // Held open together so the OS cannot hand out the same port twice.
+        using var first = new Socket(SocketType.Dgram, ProtocolType.Udp);
+        using var second = new Socket(SocketType.Dgram, ProtocolType.Udp);
+        first.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        second.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        return (((IPEndPoint)first.LocalEndPoint!).Port, ((IPEndPoint)second.LocalEndPoint!).Port);
+    }
+
+    private static Task EchoLoop(IChannel channel, CancellationToken token) => Task.Run(async () =>
+    {
+        try
+        {
+            while (true)
+            {
+                ReadResult result = await channel.ReadAsync(1024, ReadBlockingMode.WaitAny, token);
+                if (result.Result != IOResult.Ok)
+                {
+                    break;
+                }
+                await channel.WriteAsync(result.Data, token);
+            }
+        }
+        catch (Exception)
+        {
+            // The connection closed; the stream is done.
+        }
+    });
+
     private static Multiaddress LoopbackQuic(int port) => new Multiaddress()
         .Add<IP4>(IPAddress.Loopback)
         .Add<UDP>(port)
@@ -98,6 +128,57 @@ public class QuicheTransportTests
         await comm.Connection.DisconnectAsync();
         testCts.Cancel();
         await listenTask;
+    }
+
+    /// <summary>
+    /// Phase 2: the shared-port dial. Each transport listens on its
+    /// own port and then dials the other through the transport API;
+    /// the listener's view of the inbound connection's remote port
+    /// must be the dialer's listen port — the dial went out on the
+    /// listener's socket, not an ephemeral one. Echo both ways.
+    /// </summary>
+    [Test]
+    [Timeout(30000)]
+    public async Task DialFromListenPort()
+    {
+        (int portA, int portB) = TwoFreeUdpPorts();
+        using var transportA = new QuicheTransport();
+        using var transportB = new QuicheTransport();
+        using var testCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        var seenByB = new TaskCompletionSource<Multiaddress>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var seenByA = new TaskCompletionSource<Multiaddress>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task listenTaskB = transportB.ListenAsync(LoopbackQuic(portB), (channel, remote) =>
+        {
+            seenByB.TrySetResult(remote);
+            _ = EchoLoop(channel, testCts.Token);
+        }, testCts.Token);
+        Task listenTaskA = transportA.ListenAsync(LoopbackQuic(portA), (channel, remote) =>
+        {
+            seenByA.TrySetResult(remote);
+            _ = EchoLoop(channel, testCts.Token);
+        }, testCts.Token);
+
+        // A dials B: B must see source port A.
+        IRemoteComm commAB = await transportA.DialAsync(LoopbackQuic(portB));
+        Multiaddress remoteAtB = await seenByB.Task.WaitAsync(testCts.Token);
+        Assert.That(remoteAtB.Get<UDP>().Port, Is.EqualTo(portA));
+        byte[] hello = Encoding.UTF8.GetBytes("hello");
+        await commAB.Channel.WriteAsync(new ReadOnlySequence<byte>(hello), testCts.Token);
+        Assert.That(await ReadExactAsync(commAB.Channel, hello.Length, testCts.Token), Is.EqualTo(hello));
+
+        // B dials A: A must see source port B.
+        IRemoteComm commBA = await transportB.DialAsync(LoopbackQuic(portA));
+        Multiaddress remoteAtA = await seenByA.Task.WaitAsync(testCts.Token);
+        Assert.That(remoteAtA.Get<UDP>().Port, Is.EqualTo(portB));
+        await commBA.Channel.WriteAsync(new ReadOnlySequence<byte>(hello), testCts.Token);
+        Assert.That(await ReadExactAsync(commBA.Channel, hello.Length, testCts.Token), Is.EqualTo(hello));
+
+        await commAB.Connection.DisconnectAsync();
+        await commBA.Connection.DisconnectAsync();
+        testCts.Cancel();
+        await listenTaskB;
+        await listenTaskA;
     }
 
     [Test]
