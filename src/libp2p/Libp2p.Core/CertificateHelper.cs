@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 using Google.Protobuf;
-using Nethermind.Libp2p.Core;
 using System.Formats.Asn1;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Nethermind.Libp2p.Protocols.Quic;
+namespace Nethermind.Libp2p.Core;
 public class CertificateHelper
 {
     private const string PubkeyExtensionOidString = "1.3.6.1.4.1.53594.1.1";
@@ -72,7 +71,7 @@ public class CertificateHelper
         byte[] publicKey = signedKey.ReadOctetString();
         byte[] signature = signedKey.ReadOctetString();
 
-        Core.Dto.PublicKey key = Core.Dto.PublicKey.Parser.ParseFrom(publicKey);
+        Dto.PublicKey key = Dto.PublicKey.Parser.ParseFrom(publicKey);
         Identity id = new(key);
         if (peerId is not null && id.PeerId.ToString() != peerId)
         {

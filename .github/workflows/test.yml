@@ -28,6 +28,28 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y libmsquic
 
+      # The Quiche transport builds against a quiche-dotnet checkout
+      # (not published yet; see Libp2p.Transports/Quiche/README.md).
+      # Clone it at the branch the transport was last verified
+      # against, before restore resolves the ProjectReference, and
+      # build the linux-x64 native library the Quiche tests stage.
+      # When Quiche.NET is published, the ProjectReference becomes a
+      # PackageReference and these steps go away.
+      - name: Clone quiche-dotnet
+        run: git clone --branch cert-gaps --depth 1 https://github.com/tsuckow2/quiche-dotnet.git quiche-dotnet
+
+      - name: Install quiche native deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libclang-dev cmake
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build quiche native (linux-x64)
+        working-directory: quiche-dotnet
+        run: bash native/build.sh linux-x64
+
       - name: Install dependencies
         working-directory: ${{ env.WORKING_DIR }}
         run: dotnet restore
@@ -49,6 +71,7 @@ jobs:
           dotnet test Libp2p.Protocols.Pubsub.Tests ${{ env.TEST_OPTS }}
           dotnet test Libp2p.Protocols.Yamux.Tests ${{ env.TEST_OPTS }}
           dotnet test Libp2p.Transports/Quic.Tests ${{ env.TEST_OPTS }}
+          dotnet test Libp2p.Transports/Quiche.Tests ${{ env.TEST_OPTS }}
           dotnet test ../ipfs/Ipfs.Kad.Tests ${{ env.TEST_OPTS }}
           dotnet test ../ipfs/Ipfs.Status.Tests ${{ env.TEST_OPTS }}
           dotnet test ../ipfs/Ipfs.Bitswap.Tests ${{ env.TEST_OPTS }}
