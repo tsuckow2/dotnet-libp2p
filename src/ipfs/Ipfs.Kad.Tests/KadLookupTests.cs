@@ -25,10 +25,15 @@ public class KadLookupTests
         public Func<byte[], IReadOnlyList<KadPeer>> Closer { get; set; } = _ => [];
         public Func<byte[], IReadOnlyList<KadPeer>> Providers { get; set; } = _ => [];
         public List<(byte[] Key, KadPeer Provider)> AddedProviders { get; } = [];
+        public Dictionary<string, ValueStore.DhtValueRecord> Values { get; } = new();
 
         public IReadOnlyList<KadPeer> GetCloserPeers(byte[] target, int count) => Closer(target);
         public IReadOnlyList<KadPeer> GetProviders(byte[] key) => Providers(key);
         public void AddProvider(byte[] key, KadPeer provider) => AddedProviders.Add((key, provider));
+        public void AddValue(byte[] key, byte[] value, DateTimeOffset expires, string timeReceived) =>
+            Values[Convert.ToHexString(key)] = new ValueStore.DhtValueRecord(key, value, expires, timeReceived);
+        public ValueStore.DhtValueRecord? GetValue(byte[] key) =>
+            Values.TryGetValue(Convert.ToHexString(key), out ValueStore.DhtValueRecord? held) ? held : null;
     }
 
     private sealed record Node(
