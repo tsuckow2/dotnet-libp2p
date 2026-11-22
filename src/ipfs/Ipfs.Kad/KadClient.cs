@@ -366,7 +366,7 @@ public class KadClient : ILibp2pStartup
         IDhtValueValidator validator = ValidatorFor(key)
             ?? throw new InvalidOperationException(
                 $"No DHT value validator is registered for the key namespace of {Convert.ToHexString(key)}.");
-        if (!validator.TryValidate(key, value, out DateTimeOffset expires, out string? error))
+        if (!validator.TryValidate(key, value, Values?.Get(key)?.Value, out DateTimeOffset expires, out string? error))
         {
             throw new InvalidOperationException(
                 $"DHT value for key {Convert.ToHexString(key)} failed validation: {error}");

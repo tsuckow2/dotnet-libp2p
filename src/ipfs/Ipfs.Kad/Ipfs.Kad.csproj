@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ipfs.Kad.Tests" />
+    <InternalsVisibleTo Include="Ipfs.Ipns.Tests" />
   </ItemGroup>
 
   <ItemGroup>

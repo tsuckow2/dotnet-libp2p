@@ -28,8 +28,14 @@ public interface IDhtValueValidator
     ///     with a reason when the value must not be stored or announced.
     ///     <paramref name="expires"/> is the instant the value stops
     ///     being trustworthy — the store evicts it then.
+    ///     <paramref name="heldValue"/> is the value already held
+    ///     for the key, if any — the validator owns the replacement
+    ///     policy for its namespace (an IPNS validator, for example,
+    ///     refuses a record whose sequence is not newer than the
+    ///     held one, so a stale replay can never overwrite the
+    ///     current record).
     /// </summary>
-    bool TryValidate(byte[] key, byte[] value, out DateTimeOffset expires, out string? error);
+    bool TryValidate(byte[] key, byte[] value, byte[]? heldValue, out DateTimeOffset expires, out string? error);
 }
 
 /// <summary>Key namespaces: the "/xxx/" ASCII prefix of a DHT value key, or null when the key carries none.</summary>

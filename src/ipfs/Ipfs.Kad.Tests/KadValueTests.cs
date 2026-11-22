@@ -27,7 +27,7 @@ public class KadValueTests
 
         public bool Reject { get; set; }
 
-        public bool TryValidate(byte[] key, byte[] value, out DateTimeOffset expires, out string? error)
+        public bool TryValidate(byte[] key, byte[] value, byte[]? heldValue, out DateTimeOffset expires, out string? error)
         {
             expires = DateTimeOffset.UtcNow.AddHours(1);
             if (Reject)

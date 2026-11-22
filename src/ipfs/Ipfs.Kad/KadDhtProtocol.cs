@@ -167,7 +167,7 @@ public class KadDhtProtocol(KadClient? client = null, IKadPeerTable? table = nul
             return;
         }
 
-        if (!validator.TryValidate(key, value, out DateTimeOffset expires, out string? error))
+        if (!validator.TryValidate(key, value, table!.GetValue(key)?.Value, out DateTimeOffset expires, out string? error))
         {
             _logger?.LogDebug("Kad PUT_VALUE for {key} failed validation ({error}); dropped",
                 Convert.ToHexString(key), error);
