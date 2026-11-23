@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -287,6 +288,26 @@ public class KadClient : ILibp2pStartup
 
     private ProviderStore? Store => _store ??= _serviceProvider.GetService<ProviderStore>();
 
+    private ValueStore? _valueStore;
+
+    private ValueStore? Values => _valueStore ??= _serviceProvider.GetService<ValueStore>();
+
+    private IEnumerable<IDhtValueValidator>? _validators;
+
+    private IEnumerable<IDhtValueValidator> Validators =>
+        _validators ??= _serviceProvider.GetService<IEnumerable<IDhtValueValidator>>() ?? [];
+
+    /// <summary>The validator for a key's namespace, if one is registered.</summary>
+    private IDhtValueValidator? ValidatorFor(byte[] key)
+    {
+        string? ns = DhtValueNamespace.For(key);
+        return ns is null ? null : Validators.FirstOrDefault(v => v.Namespace == ns);
+    }
+
+    /// <summary>The current UTC time in RFC 3339 second precision, the stamp PUT_VALUE carries.</summary>
+    internal static string NowStamp() =>
+        DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+
     /// <summary>
     ///     Announces that this node provides the block with this
     ///     multihash: the record is kept locally (peers that ask us
@@ -328,6 +349,76 @@ public class KadClient : ILibp2pStartup
         return outcome.Closest;
     }
 
+    /// <summary>
+    ///     Publishes a DHT value: the record is validated first (no
+    ///     validator for the key's namespace, or a failed validation,
+    ///     faults the publish — an unvalidated value is never
+    ///     announced), kept locally, and sent by PUT_VALUE to the
+    ///     closest peers the walk finds — the peers a lookup for this
+    ///     key converges on, which is where the network keeps value
+    ///     records. Returns that closest set. Announces are
+    ///     best-effort per peer, as with providing: a peer may close
+    ///     a PUT_VALUE stream without a response, which reads as a
+    ///     failure here even though the record was delivered.
+    /// </summary>
+    public async Task<IReadOnlyList<KadPeer>> PutValueAsync(byte[] key, byte[] value, CancellationToken token = default)
+    {
+        IDhtValueValidator validator = ValidatorFor(key)
+            ?? throw new InvalidOperationException(
+                $"No DHT value validator is registered for the key namespace of {Convert.ToHexString(key)}.");
+        if (!validator.TryValidate(key, value, Values?.Get(key)?.Value, out DateTimeOffset expires, out string? error))
+        {
+            throw new InvalidOperationException(
+                $"DHT value for key {Convert.ToHexString(key)} failed validation: {error}");
+        }
+
+        string timeReceived = NowStamp();
+        Values?.Put(key, value, expires, timeReceived);
+
+        KadPeer self = SelfPeer();
+        LookupOutcome outcome = await LookupAsync(MessageType.FindNode, key, token);
+
+        var announcement = new Message
+        {
+            type = MessageType.PutValue,
+            key = key,
+            record = new Record { key = key, value = value, timeReceived = timeReceived },
+        };
+        await Task.WhenAll(outcome.Closest
+            .Where(peer => peer.Key != self.Key)
+            .Select(async peer =>
+            {
+                try
+                {
+                    await QueryAsync(peer, announcement, token);
+                }
+                catch (Exception e)
+                {
+                    _logger?.LogDebug("Kad put-value to {peer} failed: {error}", peer.PeerId, e.Message);
+                }
+            }));
+        return outcome.Closest;
+    }
+
+    /// <summary>
+    ///     Walks toward a key; returns the value records the walk
+    ///     collected (possibly none). Candidates are raw bytes, in
+    ///     arrival order — the caller verifies each one against its
+    ///     own rules and picks the best; this client never trusts a
+    ///     record it has not validated, and neither should its
+    ///     callers. A value held locally is returned without a walk.
+    /// </summary>
+    public async Task<IReadOnlyList<byte[]>> GetValueAsync(byte[] key, CancellationToken token = default)
+    {
+        if (Values?.Get(key) is { } held)
+        {
+            return [held.Value];
+        }
+
+        LookupOutcome outcome = await LookupAsync(MessageType.GetValue, key, token);
+        return outcome.Values;
+    }
+
     /// <summary>This node as a Kad peer: its id and the addresses it is reachable at.</summary>
     private KadPeer SelfPeer()
     {
@@ -359,7 +450,7 @@ public class KadClient : ILibp2pStartup
         return new KadPeer(localPeer.Identity.PeerId.Bytes, advertised);
     }
 
-    private sealed record LookupOutcome(IReadOnlyList<KadPeer> Providers, IReadOnlyList<KadPeer> Closest);
+    private sealed record LookupOutcome(IReadOnlyList<KadPeer> Providers, IReadOnlyList<KadPeer> Closest, IReadOnlyList<byte[]> Values);
 
     private async Task<LookupOutcome> LookupAsync(MessageType type, byte[] key, CancellationToken token)
     {
@@ -373,6 +464,7 @@ public class KadClient : ILibp2pStartup
         var queried = new ConcurrentDictionary<string, bool>();
         var failures = new ConcurrentDictionary<string, int>();
         var providers = new ConcurrentDictionary<string, KadPeer>();
+        var values = new ConcurrentDictionary<string, byte[]>();
 
         for (int round = 0; round < MaxRounds; round++)
         {
@@ -434,11 +526,20 @@ public class KadClient : ILibp2pStartup
                     AddPeer(kadPeer);
                     providers[kadPeer.Key] = kadPeer;
                 }
+
+                // A GET_VALUE answer may carry the record the key
+                // holds; collect it raw — verification is the
+                // caller's job, and a walk that finds several
+                // candidates hands them all up.
+                if (response.record?.value is { Length: > 0 } recordValue)
+                {
+                    values[Convert.ToHexString(recordValue)] = recordValue;
+                }
             }
 
             // Providers in hand and a round that taught us nobody new:
             // the walk has converged for this key.
-            if (!improved && providers.Count > 0)
+            if (!improved && (providers.Count > 0 || values.Count > 0))
             {
                 break;
             }
@@ -467,7 +568,7 @@ public class KadClient : ILibp2pStartup
             .OrderBy(peer => SHA256.HashData(peer.Id), new XorDistanceComparer(target))
             .Take(WalkWidth)
             .ToList();
-        return new LookupOutcome(providers.Values.ToList(), closest);
+        return new LookupOutcome(providers.Values.ToList(), closest, values.Values.ToList());
     }
 
 }

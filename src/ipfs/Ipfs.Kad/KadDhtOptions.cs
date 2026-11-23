@@ -34,10 +34,10 @@ public static class KadServiceCollectionExtensions
     ///     lookup awaits that seed rather than racing it.
     ///     Registering KadClient directly (without this) keeps the
     ///     client unseeded until told otherwise.
-    ///     Also registers the serving half — the provider store
-    ///     and the production peer table — so the node answers
-    ///     other peers' queries and can provide content; a table
-    ///     the application registered itself takes precedence
+    ///     Also registers the serving half — the provider store, the
+    ///     value store, and the production peer table — so the node
+    ///     answers other peers' queries and can provide content; a
+    ///     table the application registered itself takes precedence
     ///     (TryAdd), so tests can substitute their own.
     /// </summary>
     public static IServiceCollection AddKadDht(this IServiceCollection services, Action<KadDhtOptions>? configure = null)
@@ -48,6 +48,7 @@ public static class KadServiceCollectionExtensions
             .AddSingleton(options)
             .AddSingleton<KadClient>()
             .AddSingleton<ProviderStore>()
+            .AddSingleton<ValueStore>()
             .AddSingleton<ILibp2pStartup>(provider => provider.GetRequiredService<KadClient>());
         services.TryAddSingleton<IKadPeerTable, KadPeerTable>();
         return services;

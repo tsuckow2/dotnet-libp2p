@@ -11,8 +11,9 @@ namespace Nethermind.Ipfs.Kad;
 ///     The Kad DHT wire format: one length-prefixed protobuf Message
 ///     per stream, request and response
 ///     (https://github.com/libp2p/specs/blob/master/kad-dht/README.md).
-///     Only the fields a routing client needs are modeled — value
-///     records (PUT_VALUE/GET_VALUE) are out of scope.
+///     Value records ride in <see cref="Message.record"/> (field 3,
+///     go's <c>pb/dht.proto</c> Record): a PUT_VALUE carries the record
+///     to store, a GET_VALUE answer carries the record held, if any.
 /// </summary>
 internal static class KadWire
 {
@@ -28,6 +29,34 @@ internal static class KadWire
     public static async Task<Message> ReadMessageAsync(IChannel channel)
     {
         var length = await channel.ReadVarintAsync().ConfigureAwait(false);
+        var result = await channel.ReadAsync(length, ReadBlockingMode.WaitAll).ConfigureAwait(false);
+        if (result.Result != IOResult.Ok)
+        {
+            throw new InvalidOperationException("Failed to read data from the channel.");
+        }
+
+        return Serializer.Deserialize<Message>(result.Data);
+    }
+
+    /// <summary>
+    ///     Reads a response to a request of the given type. A
+    ///     zero-length response is the PUT_VALUE acknowledgement: an
+    ///     all-default protobuf message (type 0, the default enum
+    ///     value, nothing else set) serializes to zero bytes, and a
+    ///     zero-length read otherwise reads as a closed channel —
+    ///     the same delimited-reader landmine CircuitWire
+    ///     special-cases. No other response can be zero-length (every
+    ///     other type serializes its type field), so the empty
+    ///     response is the acknowledgement, full stop.
+    /// </summary>
+    public static async Task<Message> ReadResponseAsync(IChannel channel, MessageType requestType)
+    {
+        var length = await channel.ReadVarintAsync().ConfigureAwait(false);
+        if (length == 0)
+        {
+            return new Message { type = requestType };
+        }
+
         var result = await channel.ReadAsync(length, ReadBlockingMode.WaitAll).ConfigureAwait(false);
         if (result.Result != IOResult.Ok)
         {
@@ -83,9 +112,31 @@ internal class Message
     [ProtoMember(2)]
     public byte[] key;
 
+    [ProtoMember(3)]
+    public Record? record;
+
     [ProtoMember(8)]
     public List<Peer> closerPeers;
 
     [ProtoMember(9)]
     public List<Peer> providerPeers;
+}
+
+/// <summary>
+///     A DHT value record, go's <c>pb/dht.proto</c> Record: the key it
+///     was stored under, the opaque value bytes, and when the
+///     publisher sent it (RFC 3339 UTC; informational — trust comes
+///     from the value's own validation, never from this stamp).
+/// </summary>
+[ProtoContract]
+internal class Record
+{
+    [ProtoMember(1)]
+    public byte[] key;
+
+    [ProtoMember(2)]
+    public byte[] value;
+
+    [ProtoMember(3)]
+    public string timeReceived;
 }

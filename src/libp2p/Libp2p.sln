@@ -101,6 +101,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Libp2p.Protocols.Quiche", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Libp2p.Protocols.Quiche.Tests", "Libp2p.Transports\Quiche.Tests\Libp2p.Protocols.Quiche.Tests.csproj", "{3AC5CA66-5CD2-4D5F-B22B-321EFE79C90E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.Ipns", "..\ipfs\Ipfs.Ipns\Ipfs.Ipns.csproj", "{9F21F9A4-029F-4A80-A965-6844C65B998C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ipfs.Ipns.Tests", "..\ipfs\Ipfs.Ipns.Tests\Ipfs.Ipns.Tests.csproj", "{B3C812C8-A97E-4C70-835A-CB21F1D3D859}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -279,6 +283,14 @@ Global
 		{3AC5CA66-5CD2-4D5F-B22B-321EFE79C90E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3AC5CA66-5CD2-4D5F-B22B-321EFE79C90E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3AC5CA66-5CD2-4D5F-B22B-321EFE79C90E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F21F9A4-029F-4A80-A965-6844C65B998C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F21F9A4-029F-4A80-A965-6844C65B998C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F21F9A4-029F-4A80-A965-6844C65B998C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F21F9A4-029F-4A80-A965-6844C65B998C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3C812C8-A97E-4C70-835A-CB21F1D3D859}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3C812C8-A97E-4C70-835A-CB21F1D3D859}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3C812C8-A97E-4C70-835A-CB21F1D3D859}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3C812C8-A97E-4C70-835A-CB21F1D3D859}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

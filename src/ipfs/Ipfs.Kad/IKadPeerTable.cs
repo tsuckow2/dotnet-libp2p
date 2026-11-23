@@ -5,8 +5,9 @@ namespace Nethermind.Ipfs.Kad;
 
 /// <summary>
 ///     What a node knows, for answering other peers' DHT queries: who
-///     is close to a key, and who provides a block. A client-only node
-///     has no table and answers with empty peer sets.
+///     is close to a key, who provides a block, and which value record
+///     a key holds. A client-only node has no table and answers with
+///     empty peer sets and no values.
 /// </summary>
 public interface IKadPeerTable
 {
@@ -18,4 +19,10 @@ public interface IKadPeerTable
 
     /// <summary>Records a provider for a block (an ADD_PROVIDER announcement, or this node's own providing).</summary>
     void AddProvider(byte[] key, KadPeer provider);
+
+    /// <summary>Records a value for a key (a validated PUT_VALUE announcement, or this node's own publishing).</summary>
+    void AddValue(byte[] key, byte[] value, DateTimeOffset expires, string timeReceived);
+
+    /// <summary>The live value record held for a key, if any.</summary>
+    ValueStore.DhtValueRecord? GetValue(byte[] key);
 }
