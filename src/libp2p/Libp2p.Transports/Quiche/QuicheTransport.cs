@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Multiformats.Address;
 using Multiformats.Address.Protocols;
 using Nethermind.Libp2p.Core;
-using Quiche;
+using Net.Codingwell.Quiche;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
