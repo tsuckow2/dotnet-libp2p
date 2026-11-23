@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Multiformats.Address;
 using Multiformats.Address.Protocols;
 using Nethermind.Libp2p.Core;
-using Net.Codingwell.Quiche;
+using Quiche;
 using System.Buffers;
 using System.Net;
 using System.Net.Sockets;

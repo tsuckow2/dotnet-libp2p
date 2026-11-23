@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: MIT
 
-using Net.Codingwell.Quiche;
+using Quiche;
 
 namespace Nethermind.Libp2p.Protocols;
 
