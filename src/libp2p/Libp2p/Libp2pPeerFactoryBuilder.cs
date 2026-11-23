@@ -24,7 +24,7 @@ public class Libp2pPeerFactoryBuilder : PeerFactoryBuilderBase<Libp2pPeerFactory
     public Libp2pPeerFactoryBuilder(IServiceProvider? serviceProvider = default) : base(serviceProvider)
     {
         AddTransport<IpTcpProtocol>();
-        AddTransport<QuicProtocol>();
+        AddTransport<QuicheTransport>();
         AddTransport<CircuitTransport>();
         AddSecurityProtocol<NoiseProtocol>();
         AddMuxerProtocol<YamuxProtocol>();

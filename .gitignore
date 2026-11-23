@@ -357,3 +357,6 @@ MigrationBackup/
 
 *.log
 .vscode
+# Quiche.NET checkout for the Quiche transport (not published yet;
+# see Libp2p.Transports/Quiche/README.md). Cloned, not a submodule.
+quiche-dotnet

@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 using Google.Protobuf;
-using Nethermind.Libp2p.Core;
 using System.Formats.Asn1;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Nethermind.Libp2p.Protocols.Quic;
+namespace Nethermind.Libp2p.Core;
 public class CertificateHelper
 {
     private const string PubkeyExtensionOidString = "1.3.6.1.4.1.53594.1.1";
@@ -15,7 +14,26 @@ public class CertificateHelper
 
     public static X509Certificate CertificateFromIdentity(ECDsa sessionKey, Identity identity)
     {
-        byte[] signature = identity.Sign(ContentToSignFromTlsPublicKey(sessionKey.ExportSubjectPublicKeyInfo()));
+        return CertificateFromIdentity(
+            new CertificateRequest("", sessionKey, HashAlgorithmName.SHA256),
+            sessionKey.ExportSubjectPublicKeyInfo(), identity);
+    }
+
+    /// <summary>
+    /// The RSA form, for transports whose TLS stack rejects
+    /// .NET-generated ECDSA server certificates (quiche does —
+    /// see QuicheTransport's session key).
+    /// </summary>
+    public static X509Certificate CertificateFromIdentity(RSA sessionKey, Identity identity)
+    {
+        return CertificateFromIdentity(
+            new CertificateRequest("", sessionKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1),
+            sessionKey.ExportSubjectPublicKeyInfo(), identity);
+    }
+
+    private static X509Certificate CertificateFromIdentity(CertificateRequest certRequest, byte[] tlsPublicKeyInfo, Identity identity)
+    {
+        byte[] signature = identity.Sign(ContentToSignFromTlsPublicKey(tlsPublicKeyInfo));
 
         AsnWriter asnWrtier = new(AsnEncodingRules.DER);
         asnWrtier.PushSequence();
@@ -25,7 +43,6 @@ public class CertificateHelper
         byte[] pubkeyExtension = new byte[asnWrtier.GetEncodedLength()];
         asnWrtier.Encode(pubkeyExtension);
 
-        CertificateRequest certRequest = new("", sessionKey, HashAlgorithmName.SHA256);
         certRequest.CertificateExtensions.Add(new X509Extension(PubkeyExtensionOid, pubkeyExtension, true));
 
         return certRequest.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.MaxValue);
@@ -72,7 +89,7 @@ public class CertificateHelper
         byte[] publicKey = signedKey.ReadOctetString();
         byte[] signature = signedKey.ReadOctetString();
 
-        Core.Dto.PublicKey key = Core.Dto.PublicKey.Parser.ParseFrom(publicKey);
+        Dto.PublicKey key = Dto.PublicKey.Parser.ParseFrom(publicKey);
         Identity id = new(key);
         if (peerId is not null && id.PeerId.ToString() != peerId)
         {

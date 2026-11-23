@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Nethermind.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
+    <AssemblyName>Nethermind.$(MSBuildProjectName)</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Same checkout convention as the transport project (see its
+         README.md); the staging target below reads native/out/ here. -->
+    <QuicheNetDir Condition="'$(QuicheNetDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\quiche-dotnet\</QuicheNetDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="NUnit.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NSubstitute.Analyzers.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Libp2p.Core.TestsBase\Libp2p.Core.TestsBase.csproj" />
+    <ProjectReference Include="..\Quiche\Libp2p.Protocols.Quiche.csproj" />
+  </ItemGroup>
+
+  <!-- Stage the matrix-built native libraries into the NuGet layout
+       (runtimes/<rid>/native/) next to the test binary, exactly as
+       Quiche.NET's own tests do. The libraries are built by
+       native/build.sh in the quiche-dotnet checkout (CI runs it
+       first; locally, run `bash native/build.sh linux-x64` — or the
+       RID you test on — before `dotnet test`). If native/out/ is
+       empty, this target copies nothing and the tests fail with
+       DllNotFoundException naming 'quiche', which is the signal to
+       build the native library first. -->
+  <Target Name="StageQuicheNative" AfterTargets="Build">
+    <ItemGroup>
+      <QuicheNativeFiles Include="$(QuicheNetDir)native\out\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(QuicheNativeFiles)"
+          DestinationFiles="@(QuicheNativeFiles->'$(OutputPath)runtimes\%(RecursiveDir)native\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

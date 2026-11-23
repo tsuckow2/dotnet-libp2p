@@ -24,6 +24,7 @@
     <ProjectReference Include="..\Libp2p.Protocols.Plaintext\Libp2p.Protocols.Plaintext.csproj" />
     <ProjectReference Include="..\Libp2p.Transports\IpTcp\Libp2p.Protocols.IpTcp.csproj" />
     <ProjectReference Include="..\Libp2p.Transports\Quic\Libp2p.Protocols.Quic.csproj" />
+    <ProjectReference Include="..\Libp2p.Transports\Quiche\Libp2p.Protocols.Quiche.csproj" />
     <ProjectReference Include="..\Libp2p.Transports\Circuit\Libp2p.Protocols.Circuit.csproj" />
     <ProjectReference Include="..\Libp2p.Protocols.Dcutr\Libp2p.Protocols.Dcutr.csproj" />
     <ProjectReference Include="..\Libp2p.Protocols.Yamux\Libp2p.Protocols.Yamux.csproj" />
